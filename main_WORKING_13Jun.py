@@ -242,6 +242,7 @@ print("\nNIFTY OPTION CHAIN")
 print(option_chain.to_string(index=False))
 
 option_chain["Expiry"] = selected_expiry
+option_chain["Spot"] = spot
 option_chain.to_csv("option_chain.csv", index=False)
 print("option_chain.csv saved")
 

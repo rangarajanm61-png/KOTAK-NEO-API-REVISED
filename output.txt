@@ -1,0 +1,13 @@
+Enter TOTP from authenticator app: Login response: {'error': [{'code': '400', 'message': "Invalid field 'Totp'; must contain only numbers"}]}
+2FA response: {'error': [{'code': '400', 'message': "Missing required field 'Auth'"}, {'code': '400', 'message': "Missing required field 'Sid'"}]}
+
+================================
+LOGIN SUCCESSFUL
+================================
+
+['Error Message']
+
+NIFTY CASH DATA
+Empty DataFrame
+Columns: []
+Index: [0]

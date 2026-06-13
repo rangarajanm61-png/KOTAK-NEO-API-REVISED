@@ -2,6 +2,7 @@ from neo_api_client import NeoAPI
 from dotenv import load_dotenv
 import os
 from option_chain import calculate_pcr
+from option_chain import calculate_greeks
 load_dotenv()
 consumer_key = os.getenv("CONSUMER_KEY")
 
@@ -199,18 +200,35 @@ for _, row in ltp_df.iterrows():
         }],
         quote_type="all"
     )
-    print(ltp_data[0])
+    print("DEBUG =", ltp_data[0])
     ltp_value = ltp_data[0]["ltp"]
 
     ltp_rows.append({
+    "Token": int(token),
     "Strike": int(row["Strike"]),
     "Type": row["pOptionType"],
     "LTP": float(ltp_data[0]["ltp"]),
     "OI": int(ltp_data[0].get("open_int", 0)),
-    "Volume": int(ltp_data[0].get("last_traded_quantity", 0))
+    "Volume": int(ltp_data[0].get("last_volume", 0))
     })
 
 final_ltp_df = pd.DataFrame(ltp_rows)
+# Replace quote volume with websocket cumulative volume
+try:
+    live_df = pd.read_csv("live_ltp.csv")
+    live_df["VOL"] = pd.to_numeric(live_df["VOL"], errors="coerce").fillna(0).astype(int)
+
+    final_ltp_df = final_ltp_df.merge(
+        live_df[["Token", "VOL"]],
+        on="Token",
+        how="left"
+    )
+
+    final_ltp_df["Volume"] = final_ltp_df["VOL"].fillna(final_ltp_df["Volume"]).astype(int)
+    final_ltp_df = final_ltp_df.drop(columns=["VOL"])
+
+except Exception as e:
+    print("Live volume merge skipped:", e)
 
 # Convert into option-chain format
 ce_df = final_ltp_df[
@@ -230,10 +248,13 @@ option_chain = pd.merge(
     pe_df,
     on="Strike"
 )
-option_chain["CE Delta"] = "NA"
-option_chain["CE Theta"] = "NA"
-option_chain["PE Delta"] = "NA"
-option_chain["PE Theta"] = "NA"
+option_chain[["CE Delta", "CE Gamma", "CE Theta", "CE Vega"]] = option_chain["Strike"].apply(
+    lambda k: pd.Series(calculate_greeks(spot, k, opt_type="CE"))
+)
+
+option_chain[["PE Delta", "PE Gamma", "PE Theta", "PE Vega"]] = option_chain["Strike"].apply(
+    lambda k: pd.Series(calculate_greeks(spot, k, opt_type="PE"))
+)
 option_chain = option_chain.sort_values(
     by="Strike"
 )
@@ -242,6 +263,7 @@ print("\nNIFTY OPTION CHAIN")
 print(option_chain.to_string(index=False))
 
 option_chain["Expiry"] = selected_expiry
+option_chain["Spot"] = spot
 option_chain.to_csv("option_chain.csv", index=False)
 print("option_chain.csv saved")
 
@@ -288,10 +310,9 @@ print("\nCE TOKEN =", ce_token)
 print("PE TOKEN =", pe_token)
 
 with open("tokens.txt", "w") as f:
-    f.write(f"{ce_token}\n")
-    f.write(f"{pe_token}\n")
-    f.write(f"{atm_strike}\n") 
-    f.write(f"{atm_strike}\n")
+    for t in final_ltp_df["Token"].dropna().unique():
+        f.write(str(int(t)) + "\n")
+    
 
 print("Tokens saved to tokens.txt")
 
