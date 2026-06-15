@@ -212,6 +212,7 @@ for _, row in ltp_df.iterrows():
     ltp_data = client.quotes(
        
     instrument_tokens=[{
+        
         "exchange_segment": "nse_fo",
         "instrument_token": token
     }],
