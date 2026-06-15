@@ -76,6 +76,10 @@ def calculate_pcr(option_chain_data, spot=None):
 
         ce_volume = ce.get("totalTradedVolume", 0) or 0
         pe_volume = pe.get("totalTradedVolume", 0) or 0
+        print("STRIKE =", strike)
+        print("CE VOL =", ce_volume)
+        print("PE VOL =", pe_volume)
+
         if spot is None:
             spot = strike
 

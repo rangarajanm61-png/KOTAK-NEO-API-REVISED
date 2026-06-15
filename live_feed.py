@@ -54,7 +54,7 @@ def on_message(message):
         data = message.get("data", [])
 
         for tick in data:
-                # print("RAW TICK =", tick)
+                print("RAW TICK =", tick)
                 token = str(tick.get("tk")).strip()
 
                 ltp = (
@@ -69,8 +69,7 @@ def on_message(message):
                     or tick.get("vol")
                     or tick.get("volume")
                     or tick.get("Volume")
-                    or tick.get("ltq")
-                    or tick.get("last_traded_quantity")
+                    
                     or 0
                 )
                 oi = (
@@ -98,7 +97,23 @@ def on_message(message):
         df_check = pd.read_csv("live_ltp.csv")
         print("Rows =", len(df_check))
         print(f"{symbol} | TOKEN={token} | LTP={ltp} | VOL={volume} | OI={oi}")
+        try:
+                df = pd.read_csv("option_chain.csv")
 
+                if "CE Token" in df.columns:
+                    df.loc[df["CE Token"].astype(str) == str(token), "CE_LTP"] = ltp
+
+                    df.loc[df["CE Token"].astype(str) == str(token), "CE OI"] = oi
+
+                if "PE Token" in df.columns:
+                    df.loc[df["PE Token"].astype(str) == str(token), "PE_LTP"] = ltp
+
+                    df.loc[df["PE Token"].astype(str) == str(token), "PE OI"] = oi
+
+                df.to_csv("option_chain.csv", index=False)
+
+        except Exception as e:
+                print("CSV update error:", e)
     except Exception as e:
         print("LIVE DATA:", message)
         print("PARSE ERROR:", e)
