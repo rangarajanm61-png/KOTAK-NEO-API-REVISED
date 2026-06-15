@@ -39,11 +39,6 @@ data = client.search_scrip(
     symbol="NIFTY"
 )
 
-data = client.search_scrip(
-    exchange_segment="nse_cm",
-    symbol="NIFTY"
-)
-
 import pandas as pd
 
 data = client.search_scrip(
@@ -86,12 +81,6 @@ print("\n========== OPTION SYMBOLS ==========")
 print(option_df.head(20).to_string(index=False))
 
 print("\n========== END OPTION SYMBOLS ==========")
-
-# Filter only NIFTY options
-# option_df = option_df[option_df["pSymbolName"] == "NIFTY"]
-
-# Only option contracts (not futures)
-# option_df = option_df[option_df["pInstName"] == "OPTIDX"]
 
 print("\n===================================")
 print("NIFTY OPTION CONTRACTS")
@@ -179,19 +168,18 @@ print(sample_option[["pTrdSymbol", "pOptionType", "pExpiryDate", "pSymbol"]].to_
 spot = float(input("Enter current NIFTY spot: "))
 
 atm = round(spot / 50) * 50
-lower_strike = atm 
-upper_strike = atm
+lower_strike = atm - 500
+upper_strike = atm + 500
+
 print("SELECTED EXPIRY =", selected_expiry)
 print(option_df[["Strike", "pOptionType", "pExpiryDate", "pTrdSymbol", "pSymbol"]].head(30))
-print(
-    option_df[
-        option_df["Strike"] == atm
-    ][["Strike","pOptionType","pSymbol"]]
-)
-ltp_df = pd.DataFrame([
-    {"Strike": atm, "pOptionType": "CE", "pSymbol": "50593"},
-    {"Strike": atm, "pOptionType": "PE", "pSymbol": "50594"}
-])
+ltp_df = option_df[
+    (option_df["Strike"] >= lower_strike) &
+    (option_df["Strike"] <= upper_strike) &
+    (option_df["pExpiryDate"] == selected_expiry) &
+    (option_df["pTrdSymbol"].astype(str).str.startswith("NIFTY")) &
+    (option_df["pOptionType"].isin(["CE", "PE"]))
+][["Strike", "pOptionType", "pTrdSymbol", "pSymbol"]].copy()
 
 print("ATM OPTIONS FOUND")
 print(
@@ -206,79 +194,44 @@ ltp_rows = []
 for _, row in ltp_df.iterrows():
 
     token = str(row["pSymbol"])
-    print("PROCESSING TOKEN =", token)
-    print("TYPE =", row["pOptionType"])
-
+    
     ltp_data = client.quotes(
        
     instrument_tokens=[{
-        
+
         "exchange_segment": "nse_fo",
         "instrument_token": token
     }],
     quote_type="all"
 )
-    print("QUOTE RECEIVED FOR", token)
-    print(ltp_data)  
-
-    print("=================================")
-    print("QUOTE DATA =", ltp_data)
-    print("=================================")
+    
     if not isinstance(ltp_data, list) or len(ltp_data) == 0:
         print("QUOTE FAILED, SKIPPING TOKEN =", token, ltp_data)
         continue
-
-    print("DEBUG =", ltp_data[0])
+    
     ltp_value = ltp_data[0]["ltp"]
 
-    # print("DEBUG KEYS =", ltp_data[0].keys())
-    # print("DEBUG DATA =", ltp_data[0])
-
-ltp_rows.append({
+    ltp_rows.append({
     "Token": int(token),
     "Strike": int(row["Strike"]),
     "Type": str(row["pOptionType"]).upper().strip(),
     "LTP": float(ltp_data[0].get("ltp", 0)),
     "OI": int(ltp_data[0].get("open_int", 0) or 0),
-    "Volume": int(ltp_data[0].get("open_int", 0) or 0)
-})
+    "Volume": int(ltp_data[0].get("last_volume", 0) or 0),
+    })
     
 final_ltp_df = pd.DataFrame(ltp_rows)
-print("TOTAL LTP ROWS =", len(ltp_rows))
-print("FINAL LTP DF HEAD")
-print(final_ltp_df.head(10))
 
-# Replace quote volume with websocket cumulative volume
-# try:
-#    live_df = pd.read_csv("live_ltp.csv")
-#    live_df["VOL"] = pd.to_numeric(live_df["VOL"], errors="coerce").fillna(0).astype(int)
-
-#    final_ltp_df = final_ltp_df.merge(
-#        live_df[["Token", "VOL"]],
-#        on="Token",
-#        how="left"
-#    )
-
-#    final_ltp_df["Volume"] = final_ltp_df["VOL"].fillna(final_ltp_df["Volume"]).astype(int)
-#    final_ltp_df = final_ltp_df.drop(columns=["VOL"])
-
-# except Exception as e:
-#    print("Live volume merge skipped:", e)
 
 # Convert into option-chain format
 
-print("FINAL LTP TYPES =", final_ltp_df["Type"].unique())
-print(final_ltp_df.head(10))
-
 final_ltp_df["Type"] = final_ltp_df["Type"].astype(str).str.upper().str.strip()
-print("TYPE VALUES =", final_ltp_df["Type"].unique())
 print(final_ltp_df[["Strike", "Type", "LTP", "OI", "Volume"]].head(20))
 
 ce_df = final_ltp_df[
     final_ltp_df["Type"] == "CE"
 ][["Strike", "LTP", "OI", "Volume"]]
 
-print("TOTAL LTP ROWS =", len(ltp_rows))
 print(ltp_rows[:5])
 
 ce_df.columns = ["Strike", "CE_LTP", "CE OI", "CE Volume"]
@@ -298,28 +251,24 @@ option_chain = pd.merge(
 
 option_chain = option_chain.fillna(0)
 
-# option_chain[["CE Delta", "CE Gamma", "CE Theta", "CE Vega"]] = option_chain["Strike"].apply(
-#    lambda k: pd.Series(calculate_greeks(spot, k, opt_type="CE"))
-#)
-
-# option_chain[["PE Delta", "PE Gamma", "PE Theta", "PE Vega"]] = option_chain["Strike"].apply(
-#    lambda k: pd.Series(calculate_greeks(spot, k, opt_type="PE"))
-#)
-option_chain = option_chain.sort_values(
-    by="Strike"
+option_chain["OI PCR"] = option_chain.apply(
+    lambda r: round(r["PE OI"] / r["CE OI"], 2) if r["CE OI"] != 0 else 0,
+    axis=1
 )
 
-print("\nNIFTY OPTION CHAIN")
-print(option_chain.to_string(index=False))
+option_chain["Vol PCR"] = option_chain.apply(
+    lambda r: round(r["PE Volume"] / r["CE Volume"], 2) if r["CE Volume"] != 0 else 0,
+    axis=1
+)
 
 option_chain["Expiry"] = selected_expiry
 option_chain["Spot"] = spot
+
+
 option_chain.to_csv("option_chain.csv", index=False)
 print("option_chain.csv saved")
 
 # Step 4: ATM / ITM / OTM identification
-
-# spot already defined above
 
 option_chain["Distance"] = abs(
     option_chain["Strike"] - spot
@@ -332,6 +281,23 @@ option_chain["Status"] = option_chain["Strike"].apply(
               "ITM CE / OTM PE" if x < spot else
               "OTM CE / ITM PE"
 )
+print("\nNIFTY OPTION CHAIN WITH STATUS")
+
+print(option_chain[[
+    "Strike",
+    "CE_LTP",
+    "PE_LTP",
+    "CE OI",
+    "PE OI",
+    "OI PCR",
+    "CE Volume",
+    "PE Volume",
+    "Vol PCR",
+    "Expiry",
+    "Spot",
+    "Distance",
+    "Status"
+]].to_string(index=False))
 
 print("\nATM Strike =", atm_strike)
 
@@ -366,8 +332,7 @@ with open("tokens.txt", "w") as f:
 
 print("Tokens saved to tokens.txt")
 
-print("\nNIFTY OPTION CHAIN WITH STATUS")
-print(option_chain.to_string(index=False))
+# print(option_chain.to_string(index=False))
 # Convert LTP columns to numeric
 
 option_chain["CE_LTP"] = pd.to_numeric(
