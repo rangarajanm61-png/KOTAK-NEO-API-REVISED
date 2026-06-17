@@ -34,18 +34,16 @@ print("\n================================")
 print("LOGIN SUCCESSFUL")
 print("================================\n")
 
-# data = client.search_scrip(
-#     exchange_segment="nse_cm",
-#     symbol="NIFTY"
-# )
-
 import pandas as pd
 
 option = client.search_scrip(
     exchange_segment="nse_fo",
     symbol="NIFTY"
 )
-
+print(client.search_scrip(
+    exchange_segment="nse_cm",
+    symbol="NIFTY"
+))
 raw_option = option.get("data", option) if isinstance(option, dict) else option
 option_df = pd.DataFrame(raw_option if isinstance(raw_option, list) else [raw_option])
 
@@ -58,33 +56,6 @@ option_df = option_df[
 ].copy()
 
 print("NIFTY option rows =", len(option_df))
-# print(option_df["pTrdSymbol"].head(20))
-# exit()
-
-# print("\n========== OPTION SYMBOLS ==========")
-
-# print(option_df.head(20).to_string(index=False))
-
-# print("\n========== END OPTION SYMBOLS ==========")
-
-# print("\n===================================")
-# print("NIFTY OPTION CONTRACTS")
-# print("===================================")
-
-# print("Rows Found :", len(option_df))
-
-# print("\nColumns Available:")
-# print(option_df.columns.tolist())
-
-# print("\nFirst 10 Records:")
-# print(option_df.head(10).to_string(index=False))
-
-# # PCR quick check using available option symbols
-# print("\nNIFTY OPTION DATA READY")
-# print("Total option rows:", len(option_df))
-
-# print(option_df.head(20).to_string(index=False))
-# Select expiry date
 
 expiry_list = sorted(option_df["pExpiryDate"].dropna().unique())
 
@@ -121,36 +92,44 @@ option_cols = [
     "pExpiryDate",
     "pSymbol"
 ]
+# print("Testing NIFTY token 26000")
 
-# print("\nROWS =", len(option_df))
+# try:
+#     nifty_spot_quote = client.quotes(
+#         instrument_tokens=[{
+#             "exchange_segment": "nse_cm",
+#             "instrument_token": "26000"
+#         }],
+#         quote_type="ltp"
+#     )
 
-# print("\nCOLUMNS =")
-# print(option_df.columns.tolist())
+#     print(nifty_spot_quote)
 
-# print(
-#     option_df[
-#         ["pTrdSymbol",
-#          "pOptionType",
-#          "pExpiryDate"]
-#     ].head(20)
-# )
-
-# print("\nNIFTY OPTION DATA")
-# print(option_df[option_cols].to_string(index=False))
-
-# Find 23300 CE for 09Jun2026
-# sample_option = option_df[
-#    (option_df["Strike"] == 23300) &
-#    (option_df["pOptionType"] == "CE") &
-#    (option_df["pExpiryDate"] == selected_expiry)
-#]
-
-# print("\nSELECTED OPTION")
-# print(sample_option[["pTrdSymbol", "pOptionType", "pExpiryDate", "pSymbol"]].to_string(index=False)) # type: ignore
-
-# Dynamic strike range
+# except Exception as e:
+#     print(e)
 
 spot = float(input("Enter current NIFTY spot: "))
+
+# Auto NIFTY Spot from Neo
+# try:
+#     nifty_spot_quote = client.quotes(
+#         instrument_tokens=[{
+#             "exchange_segment": "nse_cm",
+#             "instrument_token": "NIFTY"
+#         }],
+#         quote_type="all"
+#     )
+
+#     spot = float(nifty_spot_quote[0].get("ltp", 0))
+
+#     if spot == 0:
+#         raise Exception("NIFTY spot LTP is zero")
+
+#     print("NIFTY Spot from Neo =", spot)
+
+# except Exception as e:
+#     print("NIFTY spot fetch failed:", e)
+#     spot = float(input("Enter current NIFTY spot manually: "))
 
 atm = round(spot / 50) * 50
 lower_strike = atm - 1000
@@ -256,11 +235,40 @@ pe_vol_total = option_chain["PE Volume"].sum()
 overall_oi_pcr = round(pe_oi_total / ce_oi_total, 2) if ce_oi_total != 0 else 0
 overall_vol_pcr = round(pe_vol_total / ce_vol_total, 2) if ce_vol_total != 0 else 0
 
+# MAX PAIN CALCULATION
+strikes = sorted(option_chain["Strike"].unique())
+pain_list = []
+
+for s in strikes:
+    ce_pain = ((s - option_chain["Strike"]).clip(lower=0) * option_chain["CE OI"]).sum()
+    pe_pain = ((option_chain["Strike"] - s).clip(lower=0) * option_chain["PE OI"]).sum()
+    total_pain = ce_pain + pe_pain
+    pain_list.append({"Strike": s, "Total Pain": total_pain})
+
+pain_df = pd.DataFrame(pain_list)
+max_pain = int(pain_df.loc[pain_df["Total Pain"].idxmin(), "Strike"])
+
 option_chain["Expiry"] = selected_expiry
 option_chain["Spot"] = spot
 
-option_chain.to_csv("option_chain.csv", index=False)
-print("option_chain.csv saved")
+history_row = pd.DataFrame([{
+    "Time": pd.Timestamp.now(),
+    "Spot": spot,
+    "Overall OI PCR": overall_oi_pcr,
+    "Overall Vol PCR": overall_vol_pcr,
+    "Max Pain": max_pain
+}])
+
+history_file = "pcr_history.csv"
+
+try:
+    old_history = pd.read_csv(history_file)
+    history = pd.concat([old_history, history_row], ignore_index=True)
+except FileNotFoundError:
+    history = history_row
+
+history.to_csv(history_file, index=False)
+print("pcr_history.csv updated")
 
 # Step 4: ATM / ITM / OTM identification
 
@@ -318,8 +326,8 @@ atm_pe = option_df[
 ce_token = str(atm_ce.iloc[0]["pSymbol"])
 pe_token = str(atm_pe.iloc[0]["pSymbol"])
 
-print("\nCE TOKEN =", ce_token)
-print("PE TOKEN =", pe_token)
+# print("\nCE TOKEN =", ce_token)
+# print("PE TOKEN =", pe_token)
 
 with open("tokens.txt", "w") as f:
     for t in final_ltp_df["Token"].dropna().unique():
@@ -423,6 +431,10 @@ else:
 #     .head(3)
 #     .to_string(index=False)
 # )
+
+option_chain.to_csv("option_chain.csv", index=False)
+print("option_chain.csv saved")
+
 print("\nNIFTY OPTION CHAIN WITH STATUS AND TRADING BIAS")
 
 print(
@@ -448,3 +460,5 @@ print(
 print("\nOVERALL PCR")
 print("Overall OI PCR  =", overall_oi_pcr)
 print("Overall Vol PCR =", overall_vol_pcr)
+
+print("Max Pain =", max_pain)
