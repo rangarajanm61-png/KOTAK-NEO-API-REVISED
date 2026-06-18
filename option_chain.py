@@ -14,18 +14,18 @@ def get_time_to_expiry(expiry):
         return 7 / 365
     
 def calculate_greeks(S, K, T=7/365, r=0.06, sigma=0.164, opt_type="CE"):
-    print("CALCULATE_GREEKS CALLED")
-    print("S=", S)
-    print("K=", K)
-    print("T=", T)
-    print("sigma=", sigma)
+    # print("CALCULATE_GREEKS CALLED")
+    # print("S=", S)
+    # print("K=", K)
+    # print("T=", T)
+    # print("sigma=", sigma)
     try:
         S = float(S)
         K = float(K)
         T = float(T)
         sigma = float(sigma)
         
-        print("CHECK:", S, K, T, sigma)
+        # print("CHECK:", S, K, T, sigma)
 
         if S <= 0 or K <= 0 or T <= 0 or sigma <= 0:
             print("FAILED CHECK")

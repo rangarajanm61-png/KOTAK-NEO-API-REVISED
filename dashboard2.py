@@ -7,7 +7,8 @@ from option_chain import calculate_pcr, expiry_summary
 from datetime import datetime
 
 st.set_page_config(layout="wide")
-st_autorefresh(interval=5000, key="dashboard_refresh")
+st_autorefresh(interval=30000, key="dashboard_refresh")
+st.caption(f"Last dashboard refresh: {datetime.now().strftime('%H:%M:%S')}")
 st.markdown("""
 <style>
 
@@ -30,8 +31,6 @@ div[data-testid="metric-container"] {
 
 </style>
 """, unsafe_allow_html=True)
-
-st_autorefresh(interval=2000, key="refresh")
 
 st.markdown("""
 <style>
