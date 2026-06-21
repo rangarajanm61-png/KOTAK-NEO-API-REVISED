@@ -87,7 +87,8 @@ try:
     oi_pcr = round(total_pe_oi / total_ce_oi, 2) if total_ce_oi != 0 else 0
     
     if "Spot" in oc.columns:
-        nifty_spot = float(oc["Spot"].iloc[0])
+        nifty_spot = float(oc["Spot"].dropna().max())
+        print("SPOT COLUMN FOUND =", nifty_spot)
     else:
         nifty_row = df[df["Symbol"].str.contains("NIFTY 50|NIFTY", na=False)]
         nifty_spot = float(nifty_row["LTP"].iloc[-1]) if not nifty_row.empty else 0

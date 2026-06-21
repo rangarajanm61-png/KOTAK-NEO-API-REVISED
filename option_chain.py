@@ -25,7 +25,7 @@ def calculate_greeks(S, K, T=7/365, r=0.06, sigma=0.164, opt_type="CE"):
         T = float(T)
         sigma = float(sigma)
         
-        # print("CHECK:", S, K, T, sigma)
+        print("CHECK:", S, K, T, sigma)
 
         if S <= 0 or K <= 0 or T <= 0 or sigma <= 0:
             print("FAILED CHECK")
@@ -73,7 +73,16 @@ def calculate_pcr(option_chain_data, spot=None):
         
         ce_oi = ce.get("openInterest", 0) or 0
         pe_oi = pe.get("openInterest", 0) or 0
+        if strike == 24100:
+            print("\nCE KEYS:")
+            print(ce.keys())
 
+            print("\nPE KEYS:")
+            print(pe.keys())
+
+        print("CE IV CHECK =", {k: v for k, v in ce.items() if "iv" in k.lower() or "vol" in k.lower() or "sigma" in k.lower()})
+        print("PE IV CHECK =", {k: v for k, v in pe.items() if "iv" in k.lower() or "vol" in k.lower() or "sigma" in k.lower()})
+            
         ce_volume = ce.get("totalTradedVolume", 0) or 0
         pe_volume = pe.get("totalTradedVolume", 0) or 0
         print("STRIKE =", strike)

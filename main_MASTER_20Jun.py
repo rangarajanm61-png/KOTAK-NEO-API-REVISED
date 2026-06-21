@@ -1,7 +1,7 @@
 from neo_api_client import NeoAPI
 from dotenv import load_dotenv
 import os
-from option_chain import calculate_pcr, calculate_greeks, get_time_to_expiry
+from option_chain import calculate_pcr
 load_dotenv()
 consumer_key = os.getenv("CONSUMER_KEY")
 
@@ -69,10 +69,10 @@ option = client.search_scrip(
 option_df = pd.DataFrame(option)
 print("\nROWS =", len(option_df))
 print("\nCOLUMNS =")
-# print(option_df.columns.tolist())
+print(option_df.columns.tolist())
 
 print("\nCOLUMNS AVAILABLE:")
-# print(option_df.columns.tolist())
+print(option_df.columns.tolist())
 
 print("\n========== OPTION SYMBOLS ==========")
 
@@ -100,7 +100,7 @@ print("\nColumns Available:")
 print(option_df.columns.tolist())
 
 print("\nFirst 10 Records:")
-# print(option_df.head(10).to_string(index=False))
+print(option_df.head(10).to_string(index=False))
 
 # PCR quick check using available option symbols
 print("\nNIFTY OPTION DATA READY")
@@ -173,9 +173,7 @@ print(sample_option[["pTrdSymbol", "pOptionType", "pExpiryDate", "pSymbol"]].to_
 
 # Dynamic strike range
 
-# spot = float(input("Enter current NIFTY spot: "))
-spot = 24089   # temporary auto spot, replace with live later
-print("AUTO SPOT USED =", spot)
+spot = float(input("Enter current NIFTY spot: "))
 
 atm = round(spot / 50) * 50
 lower_strike = atm - 500
@@ -187,9 +185,6 @@ ltp_df = option_df[
     (option_df["pExpiryDate"] == selected_expiry) &
     (option_df["pOptionType"].isin(["CE", "PE"]))
 ].copy()
-
-print("LTP_DF_ROWS =", len(ltp_df))
-print(ltp_df[["Strike","pOptionType"]].head(20))
 
 ltp_rows = []
 
@@ -204,100 +199,50 @@ for _, row in ltp_df.iterrows():
         }],
         quote_type="all"
     )
-    
-# print("TOKEN =", token)
-# print("LTP =", ltp_data[0].get("ltp"))
-
-# print("LAST TRADED QTY =", ltp_data[0].get("last_traded_quantity"))
-# print("LAST VOLUME =", ltp_data[0].get("last_volume"))
-
-# print("TOTAL BUY =", ltp_data[0].get("total_buy"))
-# print("TOTAL SELL =", ltp_data[0].get("total_sell"))
-
-# print("DEPTH =", ltp_data[0].get("depth"))
-
-# ltp_value = ltp_data[0]["ltp"]
+    # print(ltp_data[0])
+    ltp_value = ltp_data[0]["ltp"]
 
     ltp_rows.append({
-        "Strike": int(row["Strike"]),
-        "Type": row["pOptionType"],
-        "LTP": float(ltp_data[0]["ltp"]),
-        "PriceChange": float(ltp_data[0].get("change", 0)),
-        "PricePctChange": float(ltp_data[0].get("per_change", 0)),
-        "OI": int(ltp_data[0].get("open_int", 0)),
-        "Volume": int(ltp_data[0].get("last_volume", 0) or 0),
-        })
-
+    "Strike": int(row["Strike"]),
+    "Type": row["pOptionType"],
+    "LTP": float(ltp_data[0]["ltp"]),
+    "OI": int(ltp_data[0].get("open_int", 0)),
+    "Volume": int(ltp_data[0].get("last_traded_quantity", 0)),
+    "Change": float(ltp_data[0].get("change", 0)),
+    "PctChange": float(ltp_data[0].get("per_change", 0))
+    })
 
 final_ltp_df = pd.DataFrame(ltp_rows)
 
-print("FINAL_LTP_ROWS =", len(final_ltp_df))
-print(final_ltp_df[["Strike", "Type", "LTP"]].head(20))
-
 # Convert into option-chain format
-ce_df = final_ltp_df[final_ltp_df["Type"] == "CE"].copy()
-ce_df = ce_df[["Strike", "LTP", "OI", "Volume", "PriceChange", "PricePctChange"]]
-ce_df.columns = ["Strike", "CE_LTP", "CE OI", "CE Volume", "CE Price Change", "CE Price % Change"]
 
-pe_df = final_ltp_df[final_ltp_df["Type"] == "PE"].copy()
-pe_df = pe_df[["Strike", "LTP", "OI", "Volume", "PriceChange", "PricePctChange"]]
-pe_df.columns = ["Strike", "PE_LTP", "PE OI", "PE Volume", "PE Price Change", "PE Price % Change"]
+ce_df = final_ltp_df[
+    final_ltp_df["Type"] == "CE"
+][["Strike", "LTP", "OI", "Volume", "Change", "PctChange"]]
+ce_df.columns = ["Strike", "CE_LTP", "CE OI", "CE Volume", "CE Change", "CE % Change"]
 
-print("CE_ROWS =", len(ce_df))
-print("PE_ROWS =", len(pe_df))
+pe_df = final_ltp_df[
+    final_ltp_df["Type"] == "PE"
+][["Strike", "LTP", "OI", "Volume", "Change", "PctChange"]]
+pe_df.columns = ["Strike", "PE_LTP", "PE OI", "PE Volume", "PE Change", "PE % Change"]
 
 option_chain = pd.merge(
     ce_df,
     pe_df,
     on="Strike"
 )
-
-print(option_chain.columns.tolist())
-
-T = get_time_to_expiry(selected_expiry)
-
-sigma = 0.115
-
-def add_greeks(row):
-    K = float(row["Strike"])
-
-    ce_delta, ce_gamma, ce_theta, ce_vega = calculate_greeks(
-        spot, K, T=T, sigma=sigma, opt_type="CE"
-    )
-
-    pe_delta, pe_gamma, pe_theta, pe_vega = calculate_greeks(
-        spot, K, T=T, sigma=sigma, opt_type="PE"
-    )
-
-    return pd.Series({
-    "CE Delta": ce_delta,
-    "CE Gamma": ce_gamma,
-    "CE Theta": ce_theta,
-    "CE Vega": ce_vega,
-
-    "PE Delta": pe_delta,
-    "PE Gamma": pe_gamma,
-    "PE Theta": pe_theta,
-    "PE Vega": pe_vega
-    })
-
-greeks_df = option_chain.apply(add_greeks, axis=1)
-option_chain = pd.concat([option_chain, greeks_df], axis=1)
-
-option_chain = option_chain.loc[:, ~option_chain.columns.duplicated()]
-option_chain = option_chain.reset_index(drop=True)
+option_chain["CE Delta"] = "NA"
+option_chain["CE Theta"] = "NA"
+option_chain["PE Delta"] = "NA"
+option_chain["PE Theta"] = "NA"
+option_chain = option_chain.sort_values(
+    by="Strike"
+)
 
 print("\nNIFTY OPTION CHAIN")
-print("OPTION_CHAIN COLUMNS =")
-print(option_chain.columns.tolist())
-print(option_chain[[
-    "Strike",
-    "CE_LTP", "CE OI", "CE Volume", "CE Price Change", "CE Price % Change",
-    "PE_LTP", "PE OI", "PE Volume", "PE Price Change", "PE Price % Change"
-]].to_string(index=False))
+print(option_chain.to_string(index=False))
 
 option_chain["Expiry"] = selected_expiry
-option_chain["Spot"] = spot
 option_chain.to_csv("option_chain.csv", index=False)
 print("option_chain.csv saved")
 
@@ -305,12 +250,9 @@ print("option_chain.csv saved")
 
 # spot already defined above
 
-print("ROWS IN OPTION_CHAIN =", len(option_chain))
-print(option_chain.columns.tolist())
-
-option_chain["Strike"] = pd.to_numeric(option_chain["Strike"], errors="coerce")
-option_chain = option_chain.dropna(subset=["Strike"])
-option_chain["Distance"] = abs(option_chain["Strike"] - spot)
+option_chain["Distance"] = abs(
+    option_chain["Strike"] - spot
+)
 
 atm_strike = round(spot / 50) * 50
 
@@ -321,8 +263,6 @@ option_chain["Status"] = option_chain["Strike"].apply(
 )
 
 print("\nATM Strike =", atm_strike)
-# print(option_df["Strike"].tolist())
-# exit()
 
 # ATM CE / PE token extraction for live_feed.py
 atm_ce = option_df[
@@ -423,37 +363,31 @@ def trading_bias(row):
         else:
             return "PE Buy"
 
-            
-    option_chain = option_chain.loc[:, ~option_chain.columns.duplicated()].copy()
+    return "Neutral"
 
-# if "Trading_Bias" in option_chain.columns:
-#     option_chain = option_chain.drop(columns=["Trading_Bias"])
-   
-#     option_chain["Trading_Bias"] = "Neutral" 
+option_chain["Trading_Bias"] = option_chain.apply(
+    trading_bias,
+    axis=1
+)
+print("\nTOP 3 CE SELL CANDIDATES")
+print(
+    option_chain[
+        option_chain["Trading_Bias"].str.contains("CE Sell", na=False)
+    ][["Strike", "CE_TimeValue", "Trading_Bias"]]
+    .sort_values("CE_TimeValue", ascending=False)
+    .head(3)
+    .to_string(index=False)
+)
 
-# option_chain["Trading_Bias"] = option_chain.apply(
-#     trading_bias,
-#     axis=1
-# )
-# print("\nTOP 3 CE SELL CANDIDATES")
-# print(
-#     option_chain[
-#         option_chain["Trading_Bias"].str.contains("CE Sell", na=False)
-#     ][["Strike", "CE_TimeValue", "Trading_Bias"]]
-#     # .sort_values("CE_TimeValue", ascending=False)
-#     .head(3)
-#     .to_string(index=False)
-# )
-
-# print("\nTOP 3 PE SELL CANDIDATES")
-# print(
-#     option_chain[
-#         option_chain["Trading_Bias"].str.contains("PE Sell", na=False)
-#     ][["Strike", "PE_TimeValue", "Trading_Bias"]]
-#     # .sort_values("PE_TimeValue", ascending=False)
-#     .head(3)
-#     .to_string(index=False)
-# )
+print("\nTOP 3 PE SELL CANDIDATES")
+print(
+    option_chain[
+        option_chain["Trading_Bias"].str.contains("PE Sell", na=False)
+    ][["Strike", "PE_TimeValue", "Trading_Bias"]]
+    .sort_values("PE_TimeValue", ascending=False)
+    .head(3)
+    .to_string(index=False)
+)
 print("\nNIFTY OPTION CHAIN WITH TRADING BIAS")
 print(
     option_chain[
@@ -464,6 +398,7 @@ print(
             "Status",
             "CE_TimeValue",
             "PE_TimeValue",
+            "Trading_Bias"
         ]]
     .to_string(index=False)
 )
