@@ -25,10 +25,10 @@ def calculate_greeks(S, K, T=7/365, r=0.06, sigma=0.164, opt_type="CE"):
         T = float(T)
         sigma = float(sigma)
         
-        print("CHECK:", S, K, T, sigma)
+        # print("CHECK:", S, K, T, sigma)
 
         if S <= 0 or K <= 0 or T <= 0 or sigma <= 0:
-            print("FAILED CHECK")
+            # print("FAILED CHECK")
             return "NA", "NA", "NA", "NA"
 
         d1 = (log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * sqrt(T))
@@ -80,8 +80,8 @@ def calculate_pcr(option_chain_data, spot=None):
             print("\nPE KEYS:")
             print(pe.keys())
 
-        print("CE IV CHECK =", {k: v for k, v in ce.items() if "iv" in k.lower() or "vol" in k.lower() or "sigma" in k.lower()})
-        print("PE IV CHECK =", {k: v for k, v in pe.items() if "iv" in k.lower() or "vol" in k.lower() or "sigma" in k.lower()})
+        # print("CE IV CHECK =", {k: v for k, v in ce.items() if "iv" in k.lower() or "vol" in k.lower() or "sigma" in k.lower()})
+        # print("PE IV CHECK =", {k: v for k, v in pe.items() if "iv" in k.lower() or "vol" in k.lower() or "sigma" in k.lower()})
             
         ce_volume = ce.get("totalTradedVolume", 0) or 0
         pe_volume = pe.get("totalTradedVolume", 0) or 0
@@ -103,7 +103,6 @@ def calculate_pcr(option_chain_data, spot=None):
         rows.append({
             "Expiry": expiry,
             "Strike": strike,
-
             "CE LTP": ce.get("lastPrice", 0),
             "CE OI": ce_oi,
             "CE Volume": ce_volume,
