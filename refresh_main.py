@@ -1,8 +1,12 @@
+import subprocess
 import time
-import os
+from datetime import datetime
 
 while True:
-    print("Running main.py to refresh option_chain.csv")
-    os.system("/home/codespace/.python/current/bin/python main_backup_working_13Jun.py")
-    print("Waiting 5 seconds...")
-    time.sleep(5)
+    print("Running main.py at", datetime.now().strftime("%H:%M:%S"))
+
+
+    subprocess.run(["python", "main.py"])
+
+    print("Waiting 30 seconds...\n")
+    time.sleep(30)

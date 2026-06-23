@@ -51,15 +51,15 @@ data = client.search_scrip(
 )
 
 df = pd.DataFrame([data])
-print(df.columns.tolist())
+# print(df.columns.tolist())
 
 # Show only useful columns
 cols = ['pSymbolName', 'pTrdSymbol', 'pSymbol', 'pExchSeg']
 
 available_cols = [c for c in cols if c in df.columns]
 
-print("\nNIFTY CASH DATA")
-print(df[available_cols].to_string(index=False))
+# print("\nNIFTY CASH DATA")
+# print(df[available_cols].to_string(index=False))
 
 option = client.search_scrip(
     exchange_segment="nse_fo",
@@ -67,46 +67,44 @@ option = client.search_scrip(
 )
 
 option_df = pd.DataFrame(option)
-print("\nROWS =", len(option_df))
-print("\nCOLUMNS =")
+# print("\nROWS =", len(option_df))
+# print("\nCOLUMNS =")
+# print(option_df.columns.tolist())
+# print("\nCOLUMNS AVAILABLE:")
 # print(option_df.columns.tolist())
 
-print("\nCOLUMNS AVAILABLE:")
-# print(option_df.columns.tolist())
+# print("\n========== OPTION SYMBOLS ==========")
 
-print("\n========== OPTION SYMBOLS ==========")
-
-print(
-    option_df[
-        ["pSymbolName","pTrdSymbol"]
-    ].head(20).to_string(index=False)
-)
-
-print("\n========== END OPTION SYMBOLS ==========")
+# print(
+#     option_df[
+#         ["pSymbolName","pTrdSymbol"]
+#     ].head(20).to_string(index=False)
+# )
+# print("\n========== END OPTION SYMBOLS ==========")
 
 # Filter only NIFTY options
-option_df = option_df[option_df["pSymbolName"] == "NIFTY"]
+# option_df = option_df[option_df["pSymbolName"] == "NIFTY"]
 
 # Only option contracts (not futures)
-option_df = option_df[option_df["pInstName"] == "OPTIDX"]
+# option_df = option_df[option_df["pInstName"] == "OPTIDX"]
 
-print("\n===================================")
-print("NIFTY OPTION CONTRACTS")
-print("===================================")
+# print("\n===================================")
+# print("NIFTY OPTION CONTRACTS")
+# print("===================================")
 
-print("Rows Found :", len(option_df))
+# print("Rows Found :", len(option_df))
 
-print("\nColumns Available:")
-print(option_df.columns.tolist())
+# print("\nColumns Available:")
+# print(option_df.columns.tolist())
 
-print("\nFirst 10 Records:")
+# print("\nFirst 10 Records:")
 # print(option_df.head(10).to_string(index=False))
 
 # PCR quick check using available option symbols
-print("\nNIFTY OPTION DATA READY")
-print("Total option rows:", len(option_df))
+# print("\nNIFTY OPTION DATA READY")
+# print("Total option rows:", len(option_df))
 
-print(option_df.head(20).to_string(index=False))
+# print(option_df.head(20).to_string(index=False))
 # Select expiry date
 
 expiry_list = sorted(option_df["pExpiryDate"].dropna().unique())
@@ -145,21 +143,21 @@ option_cols = [
     "pSymbol"
 ]
 
-print("\nROWS =", len(option_df))
+# print("\nROWS =", len(option_df))
 
-print("\nCOLUMNS =")
-print(option_df.columns.tolist())
+# print("\nCOLUMNS =")
+# print(option_df.columns.tolist())
 
-print(
-    option_df[
-        ["pTrdSymbol",
-         "pOptionType",
-         "pExpiryDate"]
-    ].head(20)
-)
+# print(
+#     option_df[
+#         ["pTrdSymbol",
+#          "pOptionType",
+#          "pExpiryDate"]
+#     ].head(20)
+# )
 
-print("\nNIFTY OPTION DATA")
-print(option_df[option_cols].to_string(index=False))
+# print("\nNIFTY OPTION DATA")
+# print(option_df[option_cols].to_string(index=False))
 
 # Find 23300 CE for 09Jun2026
 sample_option = option_df[
@@ -168,22 +166,46 @@ sample_option = option_df[
     (option_df["pExpiryDate"] == selected_expiry)
 ]
 
-print("\nSELECTED OPTION")
-print(sample_option[["pTrdSymbol", "pOptionType", "pExpiryDate", "pSymbol"]].to_string(index=False))
+# print("\nSELECTED OPTION")
+# print(sample_option[["pTrdSymbol", "pOptionType", "pExpiryDate", "pSymbol"]].to_string(index=False))
 
 # Dynamic strike range
+# try:
+#     nifty_search = client.search_scrip(
+#         exchange_segment="nse_cm",
+#         symbol="NIFTY"
+#     )
+#     print("NIFTY SEARCH RAW =", nifty_search)
+# except Exception as e:
+#     print("NIFTY SEARCH ERROR =", e)
 
 # spot = float(input("Enter current NIFTY spot: "))
-# ---------- AUTO NIFTY SPOT FROM NEO ----------
 
-# ---------- AUTO NIFTY FUT PROXY ----------
+# Auto NIFTY using current month futures as proxy
+fut_master = pd.DataFrame(client.search_scrip(
+    exchange_segment="nse_fo",
+    symbol="NIFTY"
+))
 
-spot = float(input("Enter NIFTY FUT price from Neo: "))
-print("AUTO FUT USED AS SPOT =", spot)
+nifty_fut = fut_master[
+    fut_master["pTrdSymbol"].astype(str).str.contains("NIFTY26JUNFUT", na=False)
+]
 
-# ---------- END AUTO NIFTY FUT PROXY ----------
+# print("NIFTY FUT ROW =")
+# print(nifty_fut[["pTrdSymbol", "pSymbol"]].head().to_string(index=False))
 
-# ---------- END AUTO NIFTY SPOT ----------
+fut_token = str(nifty_fut.iloc[0]["pSymbol"])
+
+fut_data = client.quotes(
+    instrument_tokens=[{
+        "exchange_segment": "nse_fo",
+        "instrument_token": fut_token
+    }],
+    quote_type="all"
+)
+
+spot = float(fut_data[0]["ltp"])
+print("AUTO NIFTY FUT PROXY =", spot)
 
 atm = round(spot / 50) * 50
 lower_strike = atm - 500
@@ -196,8 +218,8 @@ ltp_df = option_df[
     (option_df["pOptionType"].isin(["CE", "PE"]))
 ].copy()
 
-print("LTP_DF_ROWS =", len(ltp_df))
-print(ltp_df[["Strike","pOptionType"]].head(20))
+# print("LTP_DF_ROWS =", len(ltp_df))
+# print(ltp_df[["Strike","pOptionType"]].head(20))
 
 ltp_rows = []
 
@@ -226,25 +248,22 @@ for _, row in ltp_df.iterrows():
 
 # ltp_value = ltp_data[0]["ltp"]
 
-    if isinstance(ltp_data, list) and len(ltp_data) > 0:
-        ltp_row = ltp_data[0]
+    ltp_row = ltp_data[0] if isinstance(ltp_data, list) and len(ltp_data) > 0 else {}
 
-    ltp_rows.append({
-        "Strike": int(row["Strike"]),
-        "Type": row["pOptionType"],
-        "LTP": float(ltp_row.get("ltp", 0) or 0),
-        "PriceChange": float(ltp_row.get("change", 0) or 0),
-        "PricePctChange": float(ltp_row.get("per_change", 0) or 0),
-        "OI": int(ltp_row.get("open_int", 0) or 0),
-        "Volume": int(ltp_row.get("last_volume", 0) or 0),
-    })
-else:
-    print("BAD LTP DATA:", row["Strike"], row["pOptionType"], ltp_data)
+ltp_rows.append({
+    "Strike": int(row["Strike"]),
+    "Type": row.get("OptionType", row.get("Type", "")),
+    "LTP": float(ltp_row.get("ltp", 0) or 0),
+    "PriceChange": float(ltp_row.get("change", 0) or 0),
+    "PricePctChange": float(ltp_row.get("per_change", 0) or 0),
+    "OI": int(ltp_row.get("open_int", 0) or 0),
+    "Volume": int(ltp_row.get("last_volume", 0) or 0),
+})
 
 final_ltp_df = pd.DataFrame(ltp_rows)
 
-print("FINAL_LTP_ROWS =", len(final_ltp_df))
-print(final_ltp_df[["Strike", "Type", "LTP"]].head(20))
+# print("FINAL_LTP_ROWS =", len(final_ltp_df))
+# print(final_ltp_df[["Strike", "Type", "LTP"]].head(20))
 
 # Convert into option-chain format
 ce_df = final_ltp_df[final_ltp_df["Type"] == "CE"].copy()
@@ -255,8 +274,8 @@ pe_df = final_ltp_df[final_ltp_df["Type"] == "PE"].copy()
 pe_df = pe_df[["Strike", "LTP", "OI", "Volume", "PriceChange", "PricePctChange"]]
 pe_df.columns = ["Strike", "PE_LTP", "PE OI", "PE Volume", "PE Price Change", "PE Price % Change"]
 
-print("CE_ROWS =", len(ce_df))
-print("PE_ROWS =", len(pe_df))
+# print("CE_ROWS =", len(ce_df))
+# print("PE_ROWS =", len(pe_df))
 
 option_chain = pd.merge(
     ce_df,
@@ -264,11 +283,11 @@ option_chain = pd.merge(
     on="Strike"
 )
 
-print(option_chain.columns.tolist())
+# print(option_chain.columns.tolist())
 
 T = get_time_to_expiry(selected_expiry)
 
-sigma = 1.15
+sigma = 0.115
 
 def add_greeks(row):
     K = float(row["Strike"])
@@ -299,26 +318,26 @@ option_chain = pd.concat([option_chain, greeks_df], axis=1)
 option_chain = option_chain.loc[:, ~option_chain.columns.duplicated()]
 option_chain = option_chain.reset_index(drop=True)
 
-print("\nNIFTY OPTION CHAIN")
-print("OPTION_CHAIN COLUMNS =")
-print(option_chain.columns.tolist())
-print(option_chain[[
-    "Strike",
-    "CE_LTP", "CE OI", "CE Volume", "CE Price Change", "CE Price % Change",
-    "PE_LTP", "PE OI", "PE Volume", "PE Price Change", "PE Price % Change"
-]].to_string(index=False))
+# print("\nNIFTY OPTION CHAIN")
+# # print("OPTION_CHAIN COLUMNS =")
+# print(option_chain.columns.tolist())
+# print(option_chain[[
+#     "Strike",
+#     "CE_LTP", "CE OI", "CE Volume", "CE Price Change", "CE Price % Change",
+#     "PE_LTP", "PE OI", "PE Volume", "PE Price Change", "PE Price % Change"
+# ]].to_string(index=False))
 
 option_chain["Expiry"] = selected_expiry
 option_chain["Spot"] = spot
-option_chain.to_csv("option_chain.csv", index=False)
-print("option_chain.csv saved")
+# option_chain.to_csv("option_chain.csv", index=False)
+# print("option_chain.csv saved")
 
 # Step 4: ATM / ITM / OTM identification
 
 # spot already defined above
 
-print("ROWS IN OPTION_CHAIN =", len(option_chain))
-print(option_chain.columns.tolist())
+# print("ROWS IN OPTION_CHAIN =", len(option_chain))
+# print(option_chain.columns.tolist())
 
 option_chain["Strike"] = pd.to_numeric(option_chain["Strike"], errors="coerce")
 option_chain = option_chain.dropna(subset=["Strike"])
@@ -349,16 +368,16 @@ atm_pe = option_df[
     (option_df["pExpiryDate"] == selected_expiry)
 ]
 
-print("\nATM CE TOKEN")
-print(atm_ce[["pTrdSymbol", "pSymbol"]].to_string(index=False))
+# # print("\nATM CE TOKEN")
+# print(atm_ce[["pTrdSymbol", "pSymbol"]].to_string(index=False))
 
-print("\nATM PE TOKEN")
-print(atm_pe[["pTrdSymbol", "pSymbol"]].to_string(index=False))
+# # print("\nATM PE TOKEN")
+# print(atm_pe[["pTrdSymbol", "pSymbol"]].to_string(index=False))
 ce_token = str(atm_ce.iloc[0]["pSymbol"])
 pe_token = str(atm_pe.iloc[0]["pSymbol"])
 
-print("\nCE TOKEN =", ce_token)
-print("PE TOKEN =", pe_token)
+# print("\nCE TOKEN =", ce_token)
+# print("PE TOKEN =", pe_token)
 
 with open("tokens.txt", "w") as f:
     f.write(f"{ce_token}\n")
@@ -366,10 +385,14 @@ with open("tokens.txt", "w") as f:
     f.write(f"{atm_strike}\n") 
     f.write(f"{atm_strike}\n")
 
-print("Tokens saved to tokens.txt")
+# print("Tokens saved to tokens.txt")
 
 print("\nNIFTY OPTION CHAIN WITH STATUS")
 print(option_chain.to_string(index=False))
+
+option_chain.to_csv("dashboard_data.csv", index=False)
+print("dashboard_data.csv updated")
+
 # Convert LTP columns to numeric
 
 option_chain["CE_LTP"] = pd.to_numeric(
@@ -381,6 +404,7 @@ option_chain["PE_LTP"] = pd.to_numeric(
     option_chain["PE_LTP"],
     errors="coerce"
 )
+
 # Step 5: Intrinsic Value & Time Value
 
 # Correct intrinsic values
