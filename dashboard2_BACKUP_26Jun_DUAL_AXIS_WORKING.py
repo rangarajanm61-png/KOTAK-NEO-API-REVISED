@@ -288,20 +288,20 @@ st.subheader("Live Charts")
 try:
     hist_df = pd.read_csv("chart_history.csv")
 
-    # st.markdown("### 1. NIFTY Spot vs Time")
-    # st.line_chart(hist_df.set_index("Time")[["Spot"]], height=250)
+    st.markdown("### 1. NIFTY Spot vs Time")
+    st.line_chart(hist_df.set_index("Time")[["Spot"]], height=250)
 
-    # st.markdown("### 2. OI PCR vs Time")
-    # st.line_chart(hist_df.set_index("Time")[["OI PCR"]], height=250)
+    st.markdown("### 2. OI PCR vs Time")
+    st.line_chart(hist_df.set_index("Time")[["OI PCR"]], height=250)
 
-    # st.markdown("### 3. Volume PCR vs Time")
-    # st.line_chart(hist_df.set_index("Time")[["Vol PCR"]], height=250)
+    st.markdown("### 3. Volume PCR vs Time")
+    st.line_chart(hist_df.set_index("Time")[["Vol PCR"]], height=250)
 
-    # st.markdown("### 4. OI PCR Change vs Time")
-    # st.line_chart(hist_df.set_index("Time")[["OI PCR Change"]], height=250)
+    st.markdown("### 4. OI PCR Change vs Time")
+    st.line_chart(hist_df.set_index("Time")[["OI PCR Change"]], height=250)
 
-    st.markdown("### Live Combined Chart: Spot + PCR")
-    
+    st.markdown("### 5. Combined Dual Axis Chart")
+
     combo_cols = ["Spot", "OI PCR", "Vol PCR", "OI PCR Change"]
 
     combo_df = hist_df[["Time"] + combo_cols].copy()
@@ -350,12 +350,10 @@ try:
             title="NIFTY Spot",
             side="left"
         ),
-        # 
         yaxis2=dict(
-        title="PCR",
-        overlaying="y",
-        side="right",
-        range=[-0.2, 2.0]
+            title="PCR / Change",
+            overlaying="y",
+            side="right"
         ),
         legend=dict(
             orientation="h",
