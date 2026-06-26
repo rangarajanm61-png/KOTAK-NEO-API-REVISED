@@ -52,8 +52,6 @@ div[data-testid="stMetric"] {
 </style>
 """, unsafe_allow_html=True)
 
-st.title("NIFTY ATM CE / PE Live Dashboard")
-
 placeholder = st.empty()
 
 # temporary storage
@@ -137,38 +135,6 @@ def calculate_max_pain(df):
 
 max_pain = calculate_max_pain(oc)
 
-with placeholder.container():
-    col1, col2, col3 = st.columns([2,2,2])
-
-with col1:
-    st.subheader("PCR Summary")
-    c1, c2, c3, c4 = st.columns([2,2,1.5,1.5])
-
-    c1.metric("CE OI", f"{total_ce_oi/100000:.1f} L")
-    c2.metric("PE OI", f"{total_pe_oi/100000:.1f} L")
-    c3.metric("OI PCR", f"{oi_pcr:.2f}")
-    c4.metric("Max Pain", int(max_pain))
-
-with col2:
-    st.markdown(
-        f"""
-        <div style="text-align:center;">
-            <div style="font-size:18px;font-weight:700;">
-                NIFTY LIVE SPOT
-            </div>
-            <div style="font-size:48px;font-weight:800;color:white;">
-                {nifty_spot}
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-with col3:
-    st.write("")
-
-option_df = pd.read_csv("option_chain.csv")
-
 # PCR Calculations
 total_ce_oi = option_df["CE OI"].sum()
 total_pe_oi = option_df["PE OI"].sum()
@@ -177,46 +143,52 @@ total_ce_vol = option_df["CE Volume"].sum()
 total_pe_vol = option_df["PE Volume"].sum()
 
 oi_pcr = round(total_pe_oi / total_ce_oi, 2) if total_ce_oi != 0 else 0
+vol_pcr = round(total_pe_vol / total_ce_vol, 2) if total_ce_vol != 0 else 0
 
-# Strike-wise PCR
-option_df["OI PCR"] = option_df.apply(
-    lambda r: round(r["PE OI"] / r["CE OI"], 2) if r["CE OI"] != 0 else 0,
-    axis=1
+overall_oi_pcr_change = (
+    round(option_df["OI PCR Change"].sum(), 2)
+    if "OI PCR Change" in option_df.columns
+    else 0
 )
 
-option_df["PE/CE Vol Ratio"] = option_df.apply(
-    lambda r: round(r["PE Volume"] / r["CE Volume"], 2) if r["CE Volume"] != 0 else 0,
-    axis=1
-)
-if "Expiry" in option_df.columns:
-    expiry_list = sorted(option_df["Expiry"].dropna().unique())
-else:
-    expiry_list = ["Current Expiry"]
+with placeholder.container():
 
-selected_expiry = st.selectbox("Select Expiry", expiry_list)
+    st.markdown("### NIFTY Option Dashboard")
 
-if "Expiry" not in option_df.columns:
-    option_df["Expiry"] = selected_expiry
+    st.metric("NIFTY Spot", nifty_spot)
 
-    option_df = option_df[option_df["Expiry"] == selected_expiry]
-    total_ce_oi = option_df["CE OI"].sum()
-    total_pe_oi = option_df["PE OI"].sum()
+    st.subheader("PCR Summary")
+    c1, c2, c3, c4, c5, c6 = st.columns([1.4, 1.4, 1.2, 1.2, 1.2, 1.2])
 
-    total_ce_vol = option_df["CE Volume"].sum()
-    total_pe_vol = option_df["PE Volume"].sum()
+    c1.metric("CE OI", f"{total_ce_oi/100000:.1f}L")
+    c2.metric("PE OI", f"{total_pe_oi/100000:.1f}L")
+    c3.metric("OI PCR", f"{oi_pcr:.2f}")
+    c4.metric("PCR Chg", f"{overall_oi_pcr_change:.2f}")
+    c5.metric("Vol PCR", f"{vol_pcr:.2f}")
+    c6.metric("Max Pain", int(max_pain))
 
-    oi_pcr = round(total_pe_oi / total_ce_oi, 2) if total_ce_oi > 0 else 0
-    vol_pcr = round(total_pe_vol / total_ce_vol, 2) if total_ce_vol > 0 else 0
-    
+    # Strike-wise PCR
     option_df["OI PCR"] = option_df.apply(
         lambda r: round(r["PE OI"] / r["CE OI"], 2) if r["CE OI"] != 0 else 0,
         axis=1
     )
 
-    option_df["Volume PCR"] = option_df.apply(
+    option_df["PE/CE Vol Ratio"] = option_df.apply(
         lambda r: round(r["PE Volume"] / r["CE Volume"], 2) if r["CE Volume"] != 0 else 0,
         axis=1
     )
+
+    if "Expiry" in option_df.columns:
+        expiry_list = sorted(option_df["Expiry"].dropna().unique())
+    else:
+        expiry_list = ["Current Expiry"]
+
+    selected_expiry = st.selectbox("Select Expiry", expiry_list)
+
+    if "Expiry" not in option_df.columns:
+        option_df["Expiry"] = selected_expiry
+
+    option_df = option_df[option_df["Expiry"] == selected_expiry]
 
 if "CE OI" not in option_df.columns:
     option_df["CE OI"] = 0
@@ -274,16 +246,27 @@ table1_cols = [
     "PE/CE Vol Ratio",
     "Status",
 ]
+display_df = pcr_df[table1_cols].copy()
+
+display_df = display_df.rename(columns={
+    "CE Volume": "CE Vol",
+    "PE Volume": "PE Vol",
+    "CE Price Change": "CE Price Chng",
+    "PE Price Change": "PE Price Chng",
+    "CE OI Change": "CE OI Chng",
+    "PE OI Change": "PE OI Chng",
+    "CE OI Change %": "CE OI Chng %",
+    "PE OI Change %": "PE OI Chng %",
+    "OI PCR Change": "OI PCR Chng",
+    "PE/CE Vol Ratio": "PE/CE Vol",
+})
 
 # Keep only columns that exist
 
-st.dataframe(
-    pcr_df[table1_cols],
-    use_container_width=True,
-    height=520,
-)
+st.dataframe(display_df, width="stretch", height=620)
+
 # ---------------- LIVE CHARTS ----------------
-st.subheader("Live Charts")
+st.markdown("<br><br><br>", unsafe_allow_html=True)
 
 try:
     hist_df = pd.read_csv("chart_history.csv")
@@ -316,6 +299,16 @@ try:
         y=combo_df["Spot"],
         mode="lines",
         name="NIFTY Spot",
+        line=dict(color="deepskyblue", width=3),
+        yaxis="y1"
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=combo_df["Time"],
+        y=[max_pain] * len(combo_df),
+        mode="lines",
+        name="Max Pain",
+        line=dict(color="gold", width=3, dash="dash"),
         yaxis="y1"
     ))
 
@@ -324,6 +317,7 @@ try:
         y=combo_df["OI PCR"],
         mode="lines",
         name="OI PCR",
+        line=dict(color="red", width=2),
         yaxis="y2"
     ))
 
@@ -332,6 +326,7 @@ try:
         y=combo_df["Vol PCR"],
         mode="lines",
         name="Vol PCR",
+        line=dict(color="orange", width=2),
         yaxis="y2"
     ))
 
@@ -340,6 +335,7 @@ try:
         y=combo_df["OI PCR Change"],
         mode="lines",
         name="OI PCR Change",
+        line=dict(color="lime", width=2),
         yaxis="y2"
     ))
 

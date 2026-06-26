@@ -145,8 +145,8 @@ while True:
     # -------- END AUTO NIFTY FUT PROXY --------
 
     atm = round(spot / 50) * 50
-    lower_strike = atm - 500
-    upper_strike = atm + 500
+    lower_strike = atm - 1000
+    upper_strike = atm + 1000
 
     ltp_df = option_df[
         (option_df["Strike"] >= lower_strike) &
@@ -292,6 +292,12 @@ while True:
         on="Strike",
         how="left"
     )
+    # Fill missing OI Open values
+    option_chain["CE OI Open"] = option_chain["CE OI Open"].fillna(option_chain["CE OI"])
+    option_chain["PE OI Open"] = option_chain["PE OI Open"].fillna(option_chain["PE OI"])
+
+    for col in ["CE OI", "PE OI", "CE OI Open", "PE OI Open"]:
+        option_chain[col] = pd.to_numeric(option_chain[col], errors="coerce").fillna(0)
 
     # Calculate OI Change
     option_chain["CE OI Change"] = option_chain["CE OI"] - option_chain["CE OI Open"]
