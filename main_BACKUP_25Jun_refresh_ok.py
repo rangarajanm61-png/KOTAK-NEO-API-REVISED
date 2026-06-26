@@ -205,23 +205,8 @@ while True:
         pe_df,
         on="Strike"
     )
-    # print("\n===== ALL AVAILABLE COLUMNS =====")
-    # print(final_ltp_df.columns.tolist())
 
-    # print("\n===== SAMPLE RECORD =====")
-    # print(final_ltp_df.iloc[0].to_dict())
-
-    # print("\n===== CE DATA COLUMNS =====")
-    # print(ce_df.columns.tolist())
-
-    # print("\n===== PE DATA COLUMNS =====")
-    # print(pe_df.columns.tolist())
-
-    # print("\n===== SAMPLE CE ROW =====")
-    # print(ce_df.iloc[0].to_dict())
-
-    # print("\n===== SAMPLE PE ROW =====")
-    # print(pe_df.iloc[0].to_dict())
+    # print(option_chain.columns.tolist())
 
     T = get_time_to_expiry(selected_expiry)
 
@@ -258,64 +243,7 @@ while True:
 
     option_chain["Expiry"] = selected_expiry
     option_chain["Spot"] = spot
-    # ---------- Dashboard Table 1 Columns ----------
-
-    option_chain["OI PCR"] = option_chain.apply(
-        lambda r: round(r["PE OI"] / r["CE OI"], 2)
-        if r["CE OI"] != 0 else 0,
-        axis=1
-    )
-
-    option_chain["PE/CE Vol Ratio"] = option_chain.apply(
-        lambda r: round(r["PE Volume"] / r["CE Volume"], 2)
-        if r["CE Volume"] != 0 else 0,
-        axis=1
-    )
-
-    # ---------- OPENING OI BASELINE ----------
-    baseline_file = "opening_oi_baseline.csv"
-
-    # First time of the day: save opening OI as baseline
-    if not os.path.exists(baseline_file):
-        baseline_df = option_chain[["Strike", "CE OI", "PE OI"]].copy()
-        baseline_df.columns = ["Strike", "CE OI Open", "PE OI Open"]
-        baseline_df.to_csv(baseline_file, index=False)
-        print("Opening OI baseline saved.")
-
-    # Read baseline
-    baseline_df = pd.read_csv(baseline_file)
-
-    # Merge baseline with current option chain
-    option_chain = pd.merge(
-        option_chain,
-        baseline_df,
-        on="Strike",
-        how="left"
-    )
-
-    # Calculate OI Change
-    option_chain["CE OI Change"] = option_chain["CE OI"] - option_chain["CE OI Open"]
-    option_chain["PE OI Change"] = option_chain["PE OI"] - option_chain["PE OI Open"]
-
-    # Calculate OI Change %
-    option_chain["CE OI Change %"] = option_chain.apply(
-        lambda r: round((r["CE OI Change"] / r["CE OI Open"]) * 100, 2)
-        if r["CE OI Open"] != 0 else 0,
-        axis=1
-    )
-
-    option_chain["PE OI Change %"] = option_chain.apply(
-        lambda r: round((r["PE OI Change"] / r["PE OI Open"]) * 100, 2)
-        if r["PE OI Open"] != 0 else 0,
-        axis=1
-    )
-
-    # Change OI PCR
-    option_chain["OI PCR Change"] = option_chain.apply(
-        lambda r: round(r["PE OI Change"] / r["CE OI Change"], 2)
-        if r["CE OI Change"] != 0 else 0,
-        axis=1
-    )
+    option_chain.to_csv("option_chain.csv", index=False)
     
     option_chain["Strike"] = pd.to_numeric(option_chain["Strike"], errors="coerce")
     option_chain = option_chain.dropna(subset=["Strike"])
@@ -328,7 +256,6 @@ while True:
                 "ITM CE / OTM PE" if x < spot else
                 "OTM CE / ITM PE"
     )
-    option_chain.to_csv("option_chain.csv", index=False)
 
     # ATM CE / PE token extraction for live_feed.py
     atm_ce = option_df[
@@ -450,25 +377,11 @@ while True:
 
     # ---- Table 1: Price / OI / PCR ----
     table1_cols = [
-    "Strike",
-    "CE_LTP",
-    "CE OI",
-    "CE OI Change",
-    "CE OI Change %",
-    "CE Volume",
-    "CE Price Change",
-    "PE_LTP",
-    "PE OI",
-    "PE OI Change",
-    "PE OI Change %",
-    "PE Volume",
-    "PE Price Change",
-    "OI PCR",
-    "OI PCR Change",
-    "PE/CE Vol Ratio",
-    "Expiry",
-    "Spot",
-]
+        "Strike",
+        "CE_LTP", "CE OI", "CE Volume", "CE Price Change", "CE Price % Change",
+        "PE_LTP", "PE OI", "PE Volume", "PE Price Change", "PE Price % Change",
+        "OI PCR", "PE/CE Vol Ratio", "Expiry", "Spot"
+    ]
     table1_cols = [c for c in table1_cols if c in option_chain.columns]
 
     if first_print:
