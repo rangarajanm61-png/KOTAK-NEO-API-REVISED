@@ -9,7 +9,7 @@ from datetime import datetime
 
 st.set_page_config(layout="wide")
 st_autorefresh(interval=30000, key="dashboard_refresh")
-st.caption(f"Last dashboard refresh: {datetime.now().strftime('%H:%M:%S')}")
+# st.caption(f"Last dashboard refresh: {datetime.now().strftime('%H:%M:%S')}")
 st.markdown("""
 <style>
 
@@ -153,19 +153,46 @@ overall_oi_pcr_change = (
 
 with placeholder.container():
 
+    from datetime import datetime
+
     st.markdown("### NIFTY Option Dashboard")
+    st.caption(f"Date : {datetime.now().strftime('%d-%b-%Y')}")
+    
+    if "Expiry" in option_df.columns:
+        expiry_list = sorted(option_df["Expiry"].dropna().unique())
+    else:
+        expiry_list = ["Current Expiry"]
 
-    st.metric("NIFTY Spot", nifty_spot)
+    title_col, expiry_col = st.columns([8,2])
 
-    st.subheader("PCR Summary")
-    c1, c2, c3, c4, c5, c6 = st.columns([1.4, 1.4, 1.2, 1.2, 1.2, 1.2])
+    with expiry_col:
+        selected_expiry = st.selectbox(
+            "",
+            expiry_list,
+            label_visibility="collapsed"
+        )
 
-    c1.metric("CE OI", f"{total_ce_oi/100000:.1f}L")
-    c2.metric("PE OI", f"{total_pe_oi/100000:.1f}L")
-    c3.metric("OI PCR", f"{oi_pcr:.2f}")
-    c4.metric("PCR Chg", f"{overall_oi_pcr_change:.2f}")
-    c5.metric("Vol PCR", f"{vol_pcr:.2f}")
-    c6.metric("Max Pain", int(max_pain))
+    if "Expiry" not in option_df.columns:
+        option_df["Expiry"] = selected_expiry
+
+    option_df = option_df[option_df["Expiry"] == selected_expiry]
+
+    summary_df = pd.DataFrame([{
+        "Spot": round(nifty_spot, 2),
+        "CE OI (L)": f"{total_ce_oi/100000:.1f}",
+        "PE OI (L)": f"{total_pe_oi/100000:.1f}",
+        "OI PCR": f"{oi_pcr:.2f}",
+        "PCR Δ": f"{overall_oi_pcr_change:.2f}",
+        "Vol PCR": f"{vol_pcr:.2f}",
+        "Max Pain": int(max_pain),
+        "Expiry": selected_expiry,
+        "Last Refresh Time ": datetime.now().strftime("%H:%M:%S")
+    }])
+    st.dataframe(
+        summary_df,
+        width="stretch",
+        hide_index=True
+    )
 
     # Strike-wise PCR
     option_df["OI PCR"] = option_df.apply(
@@ -177,18 +204,6 @@ with placeholder.container():
         lambda r: round(r["PE Volume"] / r["CE Volume"], 2) if r["CE Volume"] != 0 else 0,
         axis=1
     )
-
-    if "Expiry" in option_df.columns:
-        expiry_list = sorted(option_df["Expiry"].dropna().unique())
-    else:
-        expiry_list = ["Current Expiry"]
-
-    selected_expiry = st.selectbox("Select Expiry", expiry_list)
-
-    if "Expiry" not in option_df.columns:
-        option_df["Expiry"] = selected_expiry
-
-    option_df = option_df[option_df["Expiry"] == selected_expiry]
 
 if "CE OI" not in option_df.columns:
     option_df["CE OI"] = 0
@@ -366,6 +381,13 @@ try:
     
 except Exception as e:
     st.warning(f"Charts not ready: {e}")
+   
+    greeks_range = 500
+
+    table2_df = option_df[
+        (option_df["Strike"] >= nifty_spot - greeks_range) &
+        (option_df["Strike"] <= nifty_spot + greeks_range)
+    ].copy()
 
 st.subheader("Table 2 - Greeks")
 
@@ -396,9 +418,9 @@ total_pe_vol = pd.to_numeric(pcr_df["PE Volume"], errors="coerce").fillna(0).sum
 oi_pcr = round(total_pe_oi / total_ce_oi, 2) if total_ce_oi > 0 else 0
 vol_pcr = round(total_pe_vol / total_ce_vol, 2) if total_ce_vol > 0 else 0
 
-c1, c2 = st.columns(2)
-c1.metric("OI PCR", oi_pcr)
-c2.metric("Volume PCR", vol_pcr)
+# c1, c2 = st.columns(2)
+# c1.metric("OI PCR", oi_pcr)
+# c2.metric("Volume PCR", vol_pcr)
 if not df.empty:
             df["LTP"] = pd.to_numeric(df["LTP"], errors="coerce")
             df = df.dropna(subset=["LTP"])
@@ -425,17 +447,17 @@ if not df.empty:
             else:
                 signal = "NEUTRAL"
            
-            col1, col2, col3, col4 = st.columns(4)
-            col1.metric("LTP Ratio", round(pe_ltp / ce_ltp, 2) if ce_ltp != 0 else 0)
-            col2.metric("OI PCR", oi_pcr)
-            col3.metric("Vol PCR", vol_pcr)
-            col4.metric("Signal", signal)
+            # col1, col2, col3, col4 = st.columns(4)
+            # col1.metric("LTP Ratio", round(pe_ltp / ce_ltp, 2) if ce_ltp != 0 else 0)
+            # col2.metric("OI PCR", oi_pcr)
+            # col3.metric("Vol PCR", vol_pcr)
+            # col4.metric("Signal", signal)
 
-            col5, col6, col7, col8 = st.columns(4)
-            col5.metric("CE OI", ce_oi_display)
-            col6.metric("PE OI", pe_oi_display)
-            col7.metric("CE Vol", ce_vol_display)
-            col8.metric("PE Vol", pe_vol_display)
+            # col5, col6, col7, col8 = st.columns(4)
+            # col5.metric("CE OI", ce_oi_display)
+            # col6.metric("PE OI", pe_oi_display)
+            # col7.metric("CE Vol", ce_vol_display)
+            # col8.metric("PE Vol", pe_vol_display)
             
             left_col, right_col = st.columns([2, 2])
 

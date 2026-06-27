@@ -145,8 +145,8 @@ while True:
     # -------- END AUTO NIFTY FUT PROXY --------
 
     atm = round(spot / 50) * 50
-    lower_strike = atm - 1000
-    upper_strike = atm + 1000
+    lower_strike = atm - 2000
+    upper_strike = atm + 2000
 
     ltp_df = option_df[
         (option_df["Strike"] >= lower_strike) &
