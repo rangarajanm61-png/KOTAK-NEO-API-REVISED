@@ -382,7 +382,7 @@ try:
 except Exception as e:
     st.warning(f"Charts not ready: {e}")
    
-    greeks_range = 500
+    greeks_range = 2000
 
     table2_df = option_df[
         (option_df["Strike"] >= nifty_spot - greeks_range) &
