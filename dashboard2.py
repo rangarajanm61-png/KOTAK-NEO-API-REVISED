@@ -399,18 +399,29 @@ table2_cols = [
     "CE Delta",
     "CE Gamma",
     "CE Theta",
+    "CE Decay",
     "CE Vega",
     "PE Delta",
     "PE Gamma",
     "PE Theta",
+    "PE Decay",
     "PE Vega",
 ]
+spot = float(pcr_df["Spot"].iloc[0])
+atm = round(spot / 50) * 50
 
+pcr_df = pcr_df[
+    (pcr_df["Strike"] >= atm - 500) &
+    (pcr_df["Strike"] <= atm + 500)
+]
 table2_cols = [c for c in table2_cols if c in pcr_df.columns]
+
+st.subheader("TABLE 2 - OPTION GREEKS (ATM ±500)")
 
 st.dataframe(
     pcr_df[table2_cols],
-    use_container_width=True
+    use_container_width=True,
+    height=850
 )
 total_ce_vol = pd.to_numeric(pcr_df["CE Volume"], errors="coerce").fillna(0).sum()
 total_pe_vol = pd.to_numeric(pcr_df["PE Volume"], errors="coerce").fillna(0).sum()

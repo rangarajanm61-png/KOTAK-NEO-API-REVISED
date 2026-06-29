@@ -2,7 +2,7 @@ from neo_api_client import NeoAPI
 from dotenv import load_dotenv
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from option_chain import (
     calculate_pcr,
     calculate_greeks,
@@ -41,7 +41,8 @@ print("\n================================")
 print("LOGIN SUCCESSFUL")
 print("--------------------------------\n")
 
-first_print = True
+expiry_printed = False
+table_printed = False
 while True:
 
     data = client.search_scrip(
@@ -83,11 +84,11 @@ while True:
     
     expiry_list = sorted(option_df["pExpiryDate"].dropna().unique())
 
-    if first_print:
+    if not expiry_printed:
         print("AVAILABLE EXPIRIES:")
         for e in expiry_list:
             print(e)
-        first_print = False
+        expiry_printed = True
 
     selected_expiry = "07Jul2026"
     print("Selected Expiry =", selected_expiry)
@@ -132,40 +133,64 @@ while True:
 
     # -------- AUTO NIFTY FUT PROXY --------
 
-    # all_df = pd.DataFrame(option)
+    all_df = pd.DataFrame(option)
 
-    # fut_df = all_df[
-    #     (all_df["pSymbolName"] == "NIFTY") &
-    #     (all_df["pInstName"].astype(str).str.contains("FUT", na=False))
-    # ].copy()
+    fut_df = all_df[
+        (all_df["pSymbolName"] == "NIFTY") &
+        (all_df["pInstName"].astype(str).str.contains("FUT", na=False))
+    ].copy()
 
     # fut_df = fut_df[fut_df["pExpiryDate"] == selected_expiry]
-    #     print("Selected Expiry =", selected_expiry)
-    #     print("FUT rows found =", len(fut_df))
-    #     if not fut_df.empty:
-    #         print(fut_df[["pSymbol", "pTrdSymbol", "pExpiryDate"]].head(10).to_string(index=False))
-    #     else:
-    #         print("FUTURE DATAFRAME EMPTY")
-    # fut_token = str(fut_df.iloc[0]["pSymbol"])
 
-    # fut_quote = client.quotes(
-    #     instrument_tokens=[{
-    #         "exchange_segment": "nse_fo",
-    #         "instrument_token": fut_token
-    #     }],
-    #     quote_type="all"
-    # )
+    print("Selected Expiry =", selected_expiry)
+    print("\nAVAILABLE NIFTY FUTURES:")
+    print(fut_df[["pSymbol","pTrdSymbol","pExpiryDate"]].to_string(index=False))
 
-    # auto_fut_price = float(fut_quote[0].get("ltp", 0))
-    # spot = auto_fut_price
-    spot = 24056
-    print("MANUAL USED AS SPOT =", spot)
+    # Show serial numbers
+    print("\nAVAILABLE NIFTY FUTURES:")
+    for i, (_, row) in enumerate(fut_df.iterrows(), start=1):
+        print(f"{i}. {row['pTrdSymbol']}   {row['pExpiryDate']}")
+
+    choice = int(input("\nSelect Future (1,2,3...): "))
+
+    selected_row = fut_df.iloc[choice - 1]
+    fut_df = selected_row.to_frame().T
+
+    print("Selected FUT =", selected_row["pTrdSymbol"])
+    print("Selected FUT Expiry =", selected_row["pExpiryDate"])
+
+    if not fut_df.empty:
+        fut_token = str(fut_df.iloc[0]["pSymbol"])
+    else:
+        print("Selected FUT not found")
+        fut_token = None
+
+    if fut_token is not None:
+        fut_quote = client.quotes(
+            instrument_tokens=[{
+                "exchange_segment": "nse_fo",
+                "instrument_token": fut_token
+            }],
+            quote_type="all"
+    )
+
+        auto_fut_price = float(fut_quote[0].get("ltp", 0))
+    else:
+        auto_fut_price = 0
+
+    if auto_fut_price > 0:
+        spot = auto_fut_price
+
+        print("AUTO FUT USED AS SPOT =", spot)
+    else:
+        spot = float(input("Enter Spot manually: "))
+        print("MANUAL USED AS SPOT =", spot)
 
     # -------- END AUTO NIFTY FUT PROXY --------
 
     atm = round(spot / 50) * 50
-    lower_strike = atm - 2000
-    upper_strike = atm + 2000
+    lower_strike = atm - 1000
+    upper_strike = atm + 1000
 
     ltp_df = option_df[
         (option_df["Strike"] >= lower_strike) &
@@ -427,7 +452,7 @@ while True:
     )
 
     history_row = pd.DataFrame([{
-        "Time": datetime.now().strftime("%H:%M:%S"),
+        "Time": (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime("%H:%M:%S"),
         "Spot": spot,
         "OI PCR": overall_oi_pcr,
         "Vol PCR": overall_vol_pcr,
@@ -598,39 +623,49 @@ while True:
     "Expiry",
     "Spot",
 ]
+    table2_cols = [
+    "Strike",
+    "CE_LTP", "PE_LTP", "Spot",
+    "CE IV", "PE IV",
+    "CE Delta", "CE Gamma", "CE Theta", "CE Decay", "CE Vega",
+    "PE Delta", "PE Gamma", "PE Theta", "PE Decay", "PE Vega",
+]
+    table3_cols = [
+    "Strike",
+    "CE_LTP",
+    "PE_LTP",
+    "Status",
+    "CE_TimeValue",
+    "PE_TimeValue",
+]
     table1_cols = [c for c in table1_cols if c in option_chain.columns]
+    table2_cols = [c for c in table2_cols if c in option_chain.columns]
+    table3_cols = [c for c in table3_cols if c in option_chain.columns]
+    
+# ==================== PRINT TABLES ====================
+    if not table_printed:
+            print("\nTABLE 1 - PRICE / OI / PCR")
+            print(option_chain[table1_cols].to_string(index=False))
 
-    if first_print:
-        print("\nTABLE 1 - PRICE / OI / PCR")
-        print(option_chain[table1_cols].to_string(index=False))
+            print("\nTABLE 2 - OPTION CHAIN WITH GREEKS")
+            print(option_chain[table2_cols].to_string(index=False))
+            print("\nTheta Basis: Black-Scholes one-calendar-day theta calculated from live Spot, Strike, IV and remaining time to expiry.")
+            print("Current code recalculates theta every refresh because remaining time T is changing even after market closed.")
+            print("Decay Basis: Estimated premium erosion from current time based on the project decay logic, assuming Spot and IV remain unchanged.")
+            print("Current code recalculates decay every refresh; after-market broker-style theta freeze is not yet implemented.\n")
 
-        # ---- Table 2: Option Chain with Greeks ----
-        table2_cols = [
-            "Strike",
-            "CE_LTP", "PE_LTP", "Spot",
-            "CE IV", "PE IV",
-            "CE Delta", "CE Gamma", "CE Theta", "CE Decay", "CE Vega",
-            "PE Delta", "PE Gamma", "PE Theta", "PE Decay", "PE Vega",
-        ]
-        table2_cols = [c for c in table2_cols if c in option_chain.columns]
+            print("\nTABLE 3 - OPTION CHAIN WITH TRADING BIAS")
+            print(option_chain[table3_cols].to_string(index=False))
 
-        print("\nTABLE 2 - OPTION CHAIN WITH GREEKS")
-        print(option_chain[table2_cols].to_string(index=False))
+            table_printed = True
 
-
-        # ---- Table 3: Trading Bias ----
-        table3_cols = [
-            "Strike", "CE_LTP", "PE_LTP", "Status", "CE_TimeValue", "PE_TimeValue"
-        ]
-        table3_cols = [c for c in table3_cols if c in option_chain.columns]
-
-        print("\nTABLE 3 - OPTION CHAIN WITH TRADING BIAS")
-        print(option_chain[table3_cols].to_string(index=False))
-
-        first_print = False
     else:
-        print(f"Refresh OK | Spot = {spot:.2f}")
+            print(f"Refresh OK | Spot = {spot:.2f}")
 
-    # ================= END MAIN OUTPUT TABLES =================
+        # Save latest data every refresh
+    option_chain.to_csv("option_chain.csv", index=False)
+
+        # ================= END MAIN OUTPUT TABLES =================
+
     print("Waiting 5 seconds...")
     time.sleep(5)
