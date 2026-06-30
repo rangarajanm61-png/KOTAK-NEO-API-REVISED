@@ -77,20 +77,22 @@ while True:
     option_df = pd.DataFrame(option)
     
     option_df = option_df[option_df["pSymbolName"] == "NIFTY"]
-
     
     option_df = option_df[option_df["pInstName"] == "OPTIDX"]
 
-    
     expiry_list = sorted(option_df["pExpiryDate"].dropna().unique())
 
-    if not expiry_printed:
-        print("AVAILABLE EXPIRIES:")
-        for e in expiry_list:
-            print(e)
-        expiry_printed = True
+    if "expiry_choice" not in globals():
+        print("\nAVAILABLE EXPIRIES:")
+        for i, e in enumerate(expiry_list, start=1):
+            print(f"{i}. {e}")
 
-    selected_expiry = "07Jul2026"
+        expiry_choice = int(input("Select Expiry (1,2,3...): "))
+
+    else:
+        print("Using same Expiry =", expiry_choice)
+
+    selected_expiry = expiry_list[expiry_choice - 1]
     print("Selected Expiry =", selected_expiry)
 
     option_df = option_df[
@@ -142,16 +144,15 @@ while True:
 
     # fut_df = fut_df[fut_df["pExpiryDate"] == selected_expiry]
 
-    print("Selected Expiry =", selected_expiry)
-    print("\nAVAILABLE NIFTY FUTURES:")
-    print(fut_df[["pSymbol","pTrdSymbol","pExpiryDate"]].to_string(index=False))
-
     # Show serial numbers
     print("\nAVAILABLE NIFTY FUTURES:")
     for i, (_, row) in enumerate(fut_df.iterrows(), start=1):
         print(f"{i}. {row['pTrdSymbol']}   {row['pExpiryDate']}")
 
-    choice = int(input("\nSelect Future (1,2,3...): "))
+    if "choice" not in globals():
+        choice = int(input("\nSelect Future (1,2,3...): "))
+    else:
+        print("Using same Future =", choice)
 
     selected_row = fut_df.iloc[choice - 1]
     fut_df = selected_row.to_frame().T
@@ -189,8 +190,8 @@ while True:
     # -------- END AUTO NIFTY FUT PROXY --------
 
     atm = round(spot / 50) * 50
-    lower_strike = atm - 1000
-    upper_strike = atm + 1000
+    lower_strike = atm - 4000
+    upper_strike = atm + 4000
 
     ltp_df = option_df[
         (option_df["Strike"] >= lower_strike) &
@@ -462,15 +463,25 @@ while True:
         "Max Pain": 0,
     }])
 
+    print(history_row.to_string(index=False))
+
     if os.path.exists(history_file):
-        old_history = pd.read_csv(history_file)
-        chart_history = pd.concat([old_history, history_row], ignore_index=True)
+        try:
+            old_history = pd.read_csv(history_file)
+        except:
+            old_history = pd.DataFrame()
+
+        if old_history.empty:
+            chart_history = history_row
+        else:
+            chart_history = pd.concat([old_history, history_row], ignore_index=True)
     else:
-        chart_history = history_row
+            chart_history = history_row
 
     chart_history = chart_history.tail(300)
     chart_history.to_csv(history_file, index=False)
-
+    print("CHART ROWS =", len(chart_history))
+    
     option_chain["Strike"] = pd.to_numeric(option_chain["Strike"], errors="coerce")
     option_chain = option_chain.dropna(subset=["Strike"])
     option_chain["Distance"] = abs(option_chain["Strike"] - spot)
@@ -478,10 +489,14 @@ while True:
     atm_strike = round(spot / 50) * 50
 
     option_chain["Status"] = option_chain["Strike"].apply(
-        lambda x: "ATM" if x == atm_strike else
-                "ITM CE / OTM PE" if x < spot else
-                "OTM CE / ITM PE"
+    lambda x: "ATM" if x == atm_strike else
+    "ITM CE / OTM PE" if x < spot else
+    "OTM CE / ITM PE"
     )
+
+    option_chain_full = option_chain.copy()
+    option_chain_full.to_csv("option_chain_full.csv", index=False)
+
     option_chain.to_csv("option_chain.csv", index=False)
 
     # ATM CE / PE token extraction for live_feed.py

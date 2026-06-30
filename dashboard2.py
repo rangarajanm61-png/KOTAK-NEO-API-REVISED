@@ -8,7 +8,7 @@ from option_chain import calculate_pcr, expiry_summary
 from datetime import datetime
 
 st.set_page_config(layout="wide")
-st_autorefresh(interval=30000, key="dashboard_refresh")
+st_autorefresh(interval=5000, key="dashboard_refresh")
 # st.caption(f"Last dashboard refresh: {datetime.now().strftime('%H:%M:%S')}")
 st.markdown("""
 <style>
@@ -120,20 +120,34 @@ try:
 except:
         nifty_spot = "NA"
 
-def calculate_max_pain(df):
-    strikes = sorted(df["Strike"].dropna().unique())
+def calculate_max_pain(df, return_df=False):
+    mp_df = df[["Strike", "CE OI", "PE OI"]].copy()
+
+    mp_df["Strike"] = pd.to_numeric(mp_df["Strike"], errors="coerce")
+    mp_df["CE OI"] = pd.to_numeric(mp_df["CE OI"], errors="coerce").fillna(0)
+    mp_df["PE OI"] = pd.to_numeric(mp_df["PE OI"], errors="coerce").fillna(0)
+    mp_df = mp_df.dropna(subset=["Strike"])
+
     pain_list = []
 
-    for expiry_price in strikes:
-        ce_pain = ((df["Strike"] - expiry_price).clip(lower=0) * df["CE OI"]).sum()
-        pe_pain = ((expiry_price - df["Strike"]).clip(lower=0) * df["PE OI"]).sum()
+    for expiry_price in sorted(mp_df["Strike"].unique()):
+        ce_pain = ((expiry_price - mp_df["Strike"]).clip(lower=0) * mp_df["CE OI"]).sum()
+        pe_pain = ((mp_df["Strike"] - expiry_price).clip(lower=0) * mp_df["PE OI"]).sum()
         total_pain = ce_pain + pe_pain
         pain_list.append((expiry_price, total_pain))
 
     pain_df = pd.DataFrame(pain_list, columns=["Strike", "Total Pain"])
-    return pain_df.loc[pain_df["Total Pain"].idxmin(), "Strike"]
 
-max_pain = calculate_max_pain(oc)
+    if pain_df.empty:
+        return 0
+
+    if return_df:
+        return pain_df
+
+    return int(pain_df.loc[pain_df["Total Pain"].idxmin(), "Strike"])
+    
+
+
 
 # PCR Calculations
 total_ce_oi = option_df["CE OI"].sum()
@@ -167,7 +181,7 @@ with placeholder.container():
 
     with expiry_col:
         selected_expiry = st.selectbox(
-            "",
+            "Expiry",
             expiry_list,
             label_visibility="collapsed"
         )
@@ -176,8 +190,23 @@ with placeholder.container():
         option_df["Expiry"] = selected_expiry
 
     option_df = option_df[option_df["Expiry"] == selected_expiry]
+    full_df = pd.read_csv("option_chain.csv")
 
-    summary_df = pd.DataFrame([{
+if "Expiry" not in full_df.columns:
+    full_df["Expiry"] = selected_expiry
+
+full_df = full_df[full_df["Expiry"] == selected_expiry].copy()
+
+max_pain = calculate_max_pain(full_df)
+
+st.write("Max pain FULL strike range:", int(full_df["Strike"].min()), "to", int(full_df["Strike"].max()))
+st.write("Rows used for max pain:", len(full_df))
+
+try:
+        hist_df = pd.read_csv("chart_history.csv")
+except:
+        hist_df = pd.DataFrame()
+summary_df = pd.DataFrame([{
         "Spot": round(nifty_spot, 2),
         "CE OI (L)": f"{total_ce_oi/100000:.1f}",
         "PE OI (L)": f"{total_pe_oi/100000:.1f}",
@@ -186,21 +215,21 @@ with placeholder.container():
         "Vol PCR": f"{vol_pcr:.2f}",
         "Max Pain": int(max_pain),
         "Expiry": selected_expiry,
-        "Last Refresh Time ": datetime.now().strftime("%H:%M:%S")
+        "Last Refresh Time": hist_df["Time"].iloc[-1] if not hist_df.empty and "Time" in hist_df.columns else ""
     }])
-    st.dataframe(
+st.dataframe(
         summary_df,
         width="stretch",
         hide_index=True
     )
 
     # Strike-wise PCR
-    option_df["OI PCR"] = option_df.apply(
+option_df["OI PCR"] = option_df.apply(
         lambda r: round(r["PE OI"] / r["CE OI"], 2) if r["CE OI"] != 0 else 0,
         axis=1
     )
 
-    option_df["PE/CE Vol Ratio"] = option_df.apply(
+option_df["PE/CE Vol Ratio"] = option_df.apply(
         lambda r: round(r["PE Volume"] / r["CE Volume"], 2) if r["CE Volume"] != 0 else 0,
         axis=1
     )
@@ -285,6 +314,15 @@ st.markdown("<br><br><br>", unsafe_allow_html=True)
 
 try:
     hist_df = pd.read_csv("chart_history.csv")
+
+    hist_df = hist_df.dropna(subset=["Time"])
+    hist_df = hist_df[hist_df["Time"].astype(str) != "Ellipsis"]
+    hist_df = hist_df.tail(500)
+    hist_df["Spot"] = pd.to_numeric(hist_df["Spot"], errors="coerce")
+    hist_df["OI PCR"] = pd.to_numeric(hist_df["OI PCR"], errors="coerce")
+    hist_df["Vol PCR"] = pd.to_numeric(hist_df["Vol PCR"], errors="coerce")
+    st.write("Rows in history:", len(hist_df))
+    st.dataframe(hist_df.tail(5))
 
     # st.markdown("### 1. NIFTY Spot vs Time")
     # st.line_chart(hist_df.set_index("Time")[["Spot"]], height=250)
@@ -389,7 +427,7 @@ except Exception as e:
         (option_df["Strike"] <= nifty_spot + greeks_range)
     ].copy()
 
-st.subheader("Table 2 - Greeks")
+st.subheader("TABLE 2 - OPTION GREEKS (ATM ±500)")
 
 table2_cols = [
     "Strike",
@@ -415,8 +453,6 @@ pcr_df = pcr_df[
     (pcr_df["Strike"] <= atm + 500)
 ]
 table2_cols = [c for c in table2_cols if c in pcr_df.columns]
-
-st.subheader("TABLE 2 - OPTION GREEKS (ATM ±500)")
 
 st.dataframe(
     pcr_df[table2_cols],
