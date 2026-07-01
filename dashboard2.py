@@ -146,9 +146,6 @@ def calculate_max_pain(df, return_df=False):
 
     return int(pain_df.loc[pain_df["Total Pain"].idxmin(), "Strike"])
     
-
-
-
 # PCR Calculations
 total_ce_oi = option_df["CE OI"].sum()
 total_pe_oi = option_df["PE OI"].sum()
@@ -203,9 +200,12 @@ st.write("Max pain FULL strike range:", int(full_df["Strike"].min()), "to", int(
 st.write("Rows used for max pain:", len(full_df))
 
 try:
-        hist_df = pd.read_csv("chart_history.csv")
+    hist_df = pd.read_csv("chart_history.csv")
+    st.write("Chart History Columns:", hist_df.columns.tolist())
+    st.write(hist_df.tail())
 except:
-        hist_df = pd.DataFrame()
+    hist_df = pd.DataFrame()
+
 summary_df = pd.DataFrame([{
         "Spot": round(nifty_spot, 2),
         "CE OI (L)": f"{total_ce_oi/100000:.1f}",
@@ -338,7 +338,7 @@ try:
 
     st.markdown("### Live Combined Chart: Spot + PCR")
     
-    combo_cols = ["Spot", "OI PCR", "Vol PCR", "OI PCR Change"]
+    combo_cols = ["Spot", "Max Pain", "OI PCR", "Vol PCR", "OI PCR Change"]
 
     combo_df = hist_df[["Time"] + combo_cols].copy()
 
@@ -357,12 +357,12 @@ try:
     ))
 
     fig.add_trace(go.Scatter(
-        x=combo_df["Time"],
-        y=[max_pain] * len(combo_df),
-        mode="lines",
-        name="Max Pain",
-        line=dict(color="gold", width=3, dash="dash"),
-        yaxis="y1"
+    x=combo_df["Time"],
+    y=combo_df["Max Pain"],
+    mode="lines",
+    name="Max Pain",
+    line=dict(color="gold", width=3, dash="dash"),
+    yaxis="y1"
     ))
 
     fig.add_trace(go.Scatter(

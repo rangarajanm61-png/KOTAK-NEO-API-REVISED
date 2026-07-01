@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 import os
 import time
 from datetime import datetime, timedelta
+from datetime import time as dt_time
 from option_chain import (
     calculate_pcr,
     calculate_greeks,
@@ -43,6 +44,44 @@ print("--------------------------------\n")
 
 expiry_printed = False
 table_printed = False
+expiry_printed = False
+table_printed = False
+
+# ---------- 9:15 DAILY CSV RESET ----------
+# from datetime import datetime, time
+import os
+
+csv_files_to_refresh = [
+    "option_chain.csv",
+    "option_chain_full.csv",
+    "opening_oi_baseline.csv",
+    "pcr_history.csv",
+    "chart_history.csv",
+]
+
+marker = ".last_reset"
+
+now = datetime.now()
+today = now.strftime("%Y-%m-%d")
+
+if now.time() >= dt_time(9, 15):
+    last_reset = ""
+
+    if os.path.exists(marker):
+        with open(marker) as f:
+            last_reset = f.read().strip()
+
+    if today != last_reset:
+        for f in csv_files_to_refresh:
+            if os.path.exists(f):
+                os.remove(f)
+
+        with open(marker, "w") as f:
+            f.write(today)
+
+        print("CSV files cleared after 9:15 for new trading day.")
+# ------------------------------------------------
+
 while True:
 
     data = client.search_scrip(
@@ -431,6 +470,27 @@ while True:
         if r["CE OI Change"] != 0 else 0,
         axis=1
     )
+    def calculate_max_pain(df):
+        strikes = sorted(df["Strike"].dropna().unique())
+        pain_list = []
+
+        for expiry_price in strikes:
+            ce_pain = ((df["Strike"] - expiry_price).clip(lower=0) * df["CE OI"]).sum()
+            pe_pain = ((expiry_price - df["Strike"]).clip(lower=0) * df["PE OI"]).sum()
+            total_pain = ce_pain + pe_pain
+            pain_list.append((expiry_price, total_pain))
+
+        pain_df = pd.DataFrame(
+            pain_list,
+            columns=["Strike", "Total Pain"]
+        )
+
+        return int(
+            pain_df.loc[pain_df["Total Pain"].idxmin(), "Strike"]
+        )
+
+    
+
     # ---------- CHART HISTORY ----------
     from datetime import datetime
 
@@ -444,13 +504,30 @@ while True:
     overall_oi_pcr = round(total_pe_oi / total_ce_oi, 2) if total_ce_oi != 0 else 0
     overall_vol_pcr = round(total_pe_vol / total_ce_vol, 2) if total_ce_vol != 0 else 0
 
+    ce_open = option_chain["CE OI Open"].sum()
+    pe_open = option_chain["PE OI Open"].sum()
+
+    ce_now = option_chain["CE OI"].sum()
+    pe_now = option_chain["PE OI"].sum()
+
+    open_pcr = pe_open / ce_open if ce_open else 0
+    current_pcr = pe_now / ce_now if ce_now else 0
+
+    overall_oi_pcr_change = round(current_pcr - open_pcr, 3)
+
     total_ce_oi_change = option_chain["CE OI Change"].sum()
     total_pe_oi_change = option_chain["PE OI Change"].sum()
 
-    overall_oi_pcr_change = (
-        round(total_pe_oi_change / total_ce_oi_change, 2)
-        if total_ce_oi_change != 0 else 0
-    )
+    max_pain = calculate_max_pain(option_chain)
+
+    if max_pain == 0 or pd.isna(max_pain):
+        if os.path.exists("chart_history.csv"):
+            old_hist = pd.read_csv("chart_history.csv")
+            if "Max Pain" in old_hist.columns and not old_hist.empty:
+                last_valid = old_hist[old_hist["Max Pain"] > 0]["Max Pain"]
+                max_pain = int(last_valid.iloc[-1]) if not last_valid.empty else 0
+                
+    print("Max Pain =", max_pain)
 
     history_row = pd.DataFrame([{
         "Time": (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime("%H:%M:%S"),
@@ -460,7 +537,7 @@ while True:
         "OI PCR Change": overall_oi_pcr_change,
         "CE OI Change": total_ce_oi_change,
         "PE OI Change": total_pe_oi_change,
-        "Max Pain": 0,
+        "Max Pain": int(max_pain),
     }])
 
     print(history_row.to_string(index=False))
@@ -683,4 +760,5 @@ while True:
         # ================= END MAIN OUTPUT TABLES =================
 
     print("Waiting 5 seconds...")
-    time.sleep(5)
+    import time as tm
+    tm.sleep(5)
