@@ -74,6 +74,9 @@ df = read_ltp()
 # Read NIFTY spot from option_chain.csv Spot column first
 try:
     oc = pd.read_csv("option_chain.csv")
+    import os, time
+    st.write("option_chain.csv modified:", time.ctime(os.path.getmtime("option_chain.csv")))
+    st.write("option_chain.csv rows:", len(oc))
         
     option_df = oc.copy()
 

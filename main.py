@@ -72,9 +72,18 @@ if now.time() >= dt_time(9, 15):
             last_reset = f.read().strip()
 
     if today != last_reset:
+
+        protected = {
+            "option_chain_base_oi_opening.csv",
+            "option_chain_base_oi_closing.csv"
+        }
+
         for f in csv_files_to_refresh:
-            if os.path.exists(f):
+            if f not in protected and os.path.exists(f):
                 os.remove(f)
+
+        with open(marker, "w") as f:
+            f.write(today)
 
         with open(marker, "w") as f:
             f.write(today)
@@ -255,21 +264,35 @@ while True:
         
         if isinstance(ltp_data, list) and len(ltp_data) > 0:
             ltp_row = ltp_data[0]
-                  
-        ltp_rows.append({
-            "Strike": int(row["Strike"]),
-            "Type": row["pOptionType"],
-            "LTP": float(ltp_row.get("ltp", 0) or 0),
-            "PriceChange": float(ltp_row.get("change", 0) or 0),
-            "PricePctChange": float(ltp_row.get("per_change", 0) or 0),
-            "OI": int(ltp_row.get("open_int", 0) or 0),
-            "Volume": int(ltp_row.get("last_volume", 0) or 0),
 
-            # TEMP IV DEBUG
-            "IV": ltp_row.get("iv", ltp_row.get("IV", ltp_row.get("implied_volatility", 0))),
-        })
-    else:
-        pass
+            if int(row["Strike"]) == 24000:
+                print("\n========== RAW 24000 ==========")
+                for k, v in ltp_row.items():
+                    print(f"{k}: {v}")
+                    print("================================\n")
+
+            if int(row["Strike"]) == 24000:
+                print("\n===== VALUES GOING TO DASHBOARD =====")
+                print(f"Neo OI       : {ltp_row.get('open_int', 0)}")
+                print(f"Neo Volume   : {ltp_row.get('last_volume', 0)}")
+                print(f"Dashboard OI : {int(ltp_row.get('open_int', 0) or 0)}")
+                print(f"Dashboard Vol: {int(ltp_row.get('last_volume', 0) or 0)}")
+                print("====================================")
+
+            ltp_rows.append({
+                "Strike": int(row["Strike"]),
+                "Type": row["pOptionType"],
+                "LTP": float(ltp_row.get("ltp", 0) or 0),
+                "PriceChange": float(ltp_row.get("change", 0) or 0),
+                "PricePctChange": float(ltp_row.get("per_change", 0) or 0),
+                "OI": int(ltp_row.get("open_int", 0) or 0),
+                "Volume": int(ltp_row.get("last_volume", 0) or 0),
+
+                # TEMP IV DEBUG
+                "IV": ltp_row.get("iv", ltp_row.get("IV", ltp_row.get("implied_volatility", 0))),
+            })
+        else:
+            pass
         
     final_ltp_df = pd.DataFrame(ltp_rows)
     final_ltp_df = final_ltp_df[final_ltp_df["LTP"] > 0].copy()
@@ -420,37 +443,97 @@ while True:
         axis=1
     )
 
-    # ---------- OPENING OI BASELINE ----------
-    baseline_file = "opening_oi_baseline.csv"
+    # --------- STATIC OI BASELINE LOGIC ---------
+    import os
+    from datetime import datetime, timedelta
 
-    # First time of the day: save opening OI as baseline
-    if not os.path.exists(baseline_file):
-        baseline_df = option_chain[["Strike", "CE OI", "PE OI"]].copy()
-        baseline_df.columns = ["Strike", "CE OI Open", "PE OI Open"]
-        baseline_df.to_csv(baseline_file, index=False)
-        print("Opening OI baseline saved.")
+    closing_file = "option_chain_base_oi_closing.csv"
+    opening_file = "option_chain_base_oi_opening.csv"
 
-    # Read baseline
-    baseline_df = pd.read_csv(baseline_file)
+    now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
+    time_now = now_ist.strftime("%H:%M")
+    date_now = now_ist.strftime("%Y-%m-%d")
+    time_only = now_ist.strftime("%H:%M:%S")
 
-    # Merge baseline with current option chain
+    # ----------------------------------------------------
+    # SAVE CLOSING OI AFTER MARKET CLOSE (ONLY ONCE PER DAY)
+    # ----------------------------------------------------
+
+    closing_marker = "option_chain_base_oi_closing_date.txt"
+
+    last_closing_date = ""
+    if os.path.exists(closing_marker):
+        with open(closing_marker, "r") as f:
+            last_closing_date = f.read().strip()
+
+    if time_now >= "15:30" and last_closing_date != date_now:
+
+        closing_df = option_chain[["Strike", "CE OI", "PE OI"]].copy()
+
+        closing_df.insert(0, "Date", date_now)
+        closing_df.insert(1, "Time", time_only)
+
+        closing_df.columns = [
+            "Date",
+            "Time",
+            "Strike",
+            "CE OI Open",
+            "PE OI Open"
+        ]
+
+        closing_df.to_csv(closing_file, index=False)
+
+        with open(closing_marker, "w") as f:
+            f.write(date_now)
+
+        print(f"Closing OI baseline saved once : {date_now} {time_only}")
+
+    # ----------------------------------------------------
+    # READ STATIC OPENING BASELINE
+    # (User manually copies Closing → Opening)
+    # ----------------------------------------------------
+    if not os.path.exists(opening_file):
+        raise FileNotFoundError(
+            "\nERROR:\n"
+            "option_chain_base_oi_opening.csv not found.\n"
+            "Copy option_chain_base_oi_closing.csv "
+            "to option_chain_base_oi_opening.csv before market opens."
+        )
+
+    baseline_df = pd.read_csv(opening_file)
+
+    baseline_df = baseline_df[[
+        "Strike",
+        "CE OI Open",
+        "PE OI Open"
+    ]]
+
     option_chain = pd.merge(
         option_chain,
         baseline_df,
         on="Strike",
         how="left"
     )
-    # Fill missing OI Open values
-    option_chain["CE OI Open"] = option_chain["CE OI Open"].fillna(option_chain["CE OI"])
-    option_chain["PE OI Open"] = option_chain["PE OI Open"].fillna(option_chain["PE OI"])
 
-    for col in ["CE OI", "PE OI", "CE OI Open", "PE OI Open"]:
-        option_chain[col] = pd.to_numeric(option_chain[col], errors="coerce").fillna(0)
+    option_chain["CE OI Open"] = (
+        pd.to_numeric(option_chain["CE OI Open"], errors="coerce")
+        .fillna(option_chain["CE OI"])
+    )
 
-    # Calculate OI Change
+    option_chain["PE OI Open"] = (
+        pd.to_numeric(option_chain["PE OI Open"], errors="coerce")
+        .fillna(option_chain["PE OI"])
+    )
+
+    option_chain["CE OI"] = pd.to_numeric(option_chain["CE OI"], errors="coerce").fillna(0)
+    option_chain["PE OI"] = pd.to_numeric(option_chain["PE OI"], errors="coerce").fillna(0)
+
+    # ----------------------------------------------------
+    # OI CHANGE
+    # ----------------------------------------------------
     option_chain["CE OI Change"] = option_chain["CE OI"] - option_chain["CE OI Open"]
     option_chain["PE OI Change"] = option_chain["PE OI"] - option_chain["PE OI Open"]
-
+    
     # Calculate OI Change %
     option_chain["CE OI Change %"] = option_chain.apply(
         lambda r: round((r["CE OI Change"] / r["CE OI Open"]) * 100, 2)
@@ -510,13 +593,13 @@ while True:
     ce_now = option_chain["CE OI"].sum()
     pe_now = option_chain["PE OI"].sum()
 
-    open_pcr = pe_open / ce_open if ce_open else 0
-    current_pcr = pe_now / ce_now if ce_now else 0
-
-    overall_oi_pcr_change = round(current_pcr - open_pcr, 3)
+    ce_change = ce_now - ce_open
+    pe_change = pe_now - pe_open
 
     total_ce_oi_change = option_chain["CE OI Change"].sum()
     total_pe_oi_change = option_chain["PE OI Change"].sum()
+
+    overall_oi_pcr_change = round(total_pe_oi_change / total_ce_oi_change, 2) if total_ce_oi_change != 0 else 0
 
     max_pain = calculate_max_pain(option_chain)
 
