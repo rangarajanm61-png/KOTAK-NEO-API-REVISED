@@ -2,7 +2,7 @@ from neo_api_client import NeoAPI
 from dotenv import load_dotenv
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from datetime import time as dt_time
 from option_chain import (
     calculate_pcr,
@@ -180,62 +180,16 @@ while True:
         (option_df["pOptionType"] == "CE") &
         (option_df["pExpiryDate"] == selected_expiry)
     ]
+       
+    try:
+        with open("nifty_spot_live.txt", "r") as f:
+            spot = float(f.read().strip())
+        print("NEO LIVE NIFTY SPOT USED =", spot)
 
-    # -------- AUTO NIFTY FUT PROXY --------
-
-    all_df = pd.DataFrame(option)
-
-    fut_df = all_df[
-        (all_df["pSymbolName"] == "NIFTY") &
-        (all_df["pInstName"].astype(str).str.contains("FUT", na=False))
-    ].copy()
-
-    # fut_df = fut_df[fut_df["pExpiryDate"] == selected_expiry]
-
-    # Show serial numbers
-    print("\nAVAILABLE NIFTY FUTURES:")
-    for i, (_, row) in enumerate(fut_df.iterrows(), start=1):
-        print(f"{i}. {row['pTrdSymbol']}   {row['pExpiryDate']}")
-
-    if "choice" not in globals():
-        choice = int(input("\nSelect Future (1,2,3...): "))
-    else:
-        print("Using same Future =", choice)
-
-    selected_row = fut_df.iloc[choice - 1]
-    fut_df = selected_row.to_frame().T
-
-    print("Selected FUT =", selected_row["pTrdSymbol"])
-    print("Selected FUT Expiry =", selected_row["pExpiryDate"])
-
-    if not fut_df.empty:
-        fut_token = str(fut_df.iloc[0]["pSymbol"])
-    else:
-        print("Selected FUT not found")
-        fut_token = None
-
-    if fut_token is not None:
-        fut_quote = client.quotes(
-            instrument_tokens=[{
-                "exchange_segment": "nse_fo",
-                "instrument_token": fut_token
-            }],
-            quote_type="all"
-    )
-
-        auto_fut_price = float(fut_quote[0].get("ltp", 0))
-    else:
-        auto_fut_price = 0
-
-    if auto_fut_price > 0:
-        spot = auto_fut_price
-
-        print("AUTO FUT USED AS SPOT =", spot)
-    else:
+    except Exception as e:
+        print("LIVE SPOT FILE ERROR =", e)
         spot = float(input("Enter Spot manually: "))
         print("MANUAL USED AS SPOT =", spot)
-
-    # -------- END AUTO NIFTY FUT PROXY --------
 
     atm = round(spot / 50) * 50
     lower_strike = atm - 4000
@@ -265,19 +219,19 @@ while True:
         if isinstance(ltp_data, list) and len(ltp_data) > 0:
             ltp_row = ltp_data[0]
 
-            if int(row["Strike"]) == 24000:
-                print("\n========== RAW 24000 ==========")
-                for k, v in ltp_row.items():
-                    print(f"{k}: {v}")
-                    print("================================\n")
+        #     if int(row["Strike"]) == 24000:
+        #         print("\n========== RAW 24000 ==========")
+        #         for k, v in ltp_row.items():
+        #             print(f"{k}: {v}")
+        #             print("================================\n")
 
-            if int(row["Strike"]) == 24000:
-                print("\n===== VALUES GOING TO DASHBOARD =====")
-                print(f"Neo OI       : {ltp_row.get('open_int', 0)}")
-                print(f"Neo Volume   : {ltp_row.get('last_volume', 0)}")
-                print(f"Dashboard OI : {int(ltp_row.get('open_int', 0) or 0)}")
-                print(f"Dashboard Vol: {int(ltp_row.get('last_volume', 0) or 0)}")
-                print("====================================")
+            # if int(row["Strike"]) == 24000:
+            #     print("\n===== VALUES GOING TO DASHBOARD =====")
+            #     print(f"Neo OI       : {ltp_row.get('open_int', 0)}")
+            #     print(f"Neo Volume   : {ltp_row.get('last_volume', 0)}")
+            #     print(f"Dashboard OI : {int(ltp_row.get('open_int', 0) or 0)}")
+            #     print(f"Dashboard Vol: {int(ltp_row.get('last_volume', 0) or 0)}")
+            #     print("====================================")
 
             ltp_rows.append({
                 "Strike": int(row["Strike"]),
@@ -315,23 +269,7 @@ while True:
         pe_df,
         on="Strike"
     )
-    # print("\n===== ALL AVAILABLE COLUMNS =====")
-    # print(final_ltp_df.columns.tolist())
-
-    # print("\n===== SAMPLE RECORD =====")
-    # print(final_ltp_df.iloc[0].to_dict())
-
-    # print("\n===== CE DATA COLUMNS =====")
-    # print(ce_df.columns.tolist())
-
-    # print("\n===== PE DATA COLUMNS =====")
-    # print(pe_df.columns.tolist())
-
-    # print("\n===== SAMPLE CE ROW =====")
-    # print(ce_df.iloc[0].to_dict())
-
-    # print("\n===== SAMPLE PE ROW =====")
-    # print(pe_df.iloc[0].to_dict())
+   
 
     T = get_time_to_expiry(selected_expiry)
 
@@ -398,28 +336,6 @@ while True:
         })
     option_chain = option_chain.sort_values("Strike").reset_index(drop=True)
 
-    # option_chain["CE IV Smooth"] = option_chain["CE IV"].rolling(window=3, center=True, min_periods=1).mean()
-    # option_chain["PE IV Smooth"] = option_chain["PE IV"].rolling(window=3, center=True, min_periods=1).mean()
-    # option_chain = option_chain.sort_values("Strike").reset_index(drop=True)
-
-    # option_chain["CE IV Raw"] = option_chain.apply(
-    #     lambda row: calculate_iv(spot, float(row["Strike"]), T, float(row["CE_LTP"]), "CE") or 0,
-    #     axis=1
-    # )
-
-    # option_chain["PE IV Raw"] = option_chain.apply(
-    #     lambda row: calculate_iv(spot, float(row["Strike"]), T, float(row["PE_LTP"]), "PE") or 0,
-    #     axis=1
-    # )
-
-    # option_chain["CE IV Smooth"] = option_chain["CE IV Raw"].rolling(
-    #     window=3, center=True, min_periods=1
-    # ).mean() * 100
-
-    # option_chain["PE IV Smooth"] = option_chain["PE IV Raw"].rolling(
-    #     window=3, center=True, min_periods=1
-    # ).mean() * 100
-
     greeks_df = option_chain.apply(add_greeks, axis=1)
     option_chain = pd.concat([option_chain, greeks_df], axis=1)
 
@@ -429,6 +345,7 @@ while True:
 
     option_chain["Expiry"] = selected_expiry
     option_chain["Spot"] = spot
+
     # ---------- Dashboard Table 1 Columns ----------
 
     option_chain["OI PCR"] = option_chain.apply(
@@ -450,7 +367,7 @@ while True:
     closing_file = "option_chain_base_oi_closing.csv"
     opening_file = "option_chain_base_oi_opening.csv"
 
-    now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
+    now_ist = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
     time_now = now_ist.strftime("%H:%M")
     date_now = now_ist.strftime("%Y-%m-%d")
     time_only = now_ist.strftime("%H:%M:%S")
@@ -572,8 +489,6 @@ while True:
             pain_df.loc[pain_df["Total Pain"].idxmin(), "Strike"]
         )
 
-    
-
     # ---------- CHART HISTORY ----------
     from datetime import datetime
 
@@ -612,8 +527,38 @@ while True:
                 
     print("Max Pain =", max_pain)
 
+    # print("\n" + "="*70)
+    # print("                 OI PCR CHANGE DEBUG")
+    # print("="*70)
+
+    # opening_ce_oi_total = option_chain["CE OI Open"].sum()
+    # opening_pe_oi_total = option_chain["PE OI Open"].sum()
+    # current_ce_oi_total = option_chain["CE OI"].sum()
+    # current_pe_oi_total = option_chain["PE OI"].sum()
+
+    # print(f"Opening Total CE OI : {opening_ce_oi_total:,.0f}")
+    # print(f"Current Total CE OI : {current_ce_oi_total:,.0f}")
+    # print(f"Total CE OI Change  : {total_ce_oi_change:+,.0f}")
+
+    # print(f"Opening Total PE OI : {opening_pe_oi_total:,.0f}")
+    # print(f"Current Total PE OI : {current_pe_oi_total:,.0f}")
+    # print(f"Total PE OI Change  : {total_pe_oi_change:+,.0f}")
+
+    # print(f"Overall OI PCR      : {overall_oi_pcr:.4f}")
+
+    # if total_ce_oi_change != 0:
+    #     calc_delta = total_pe_oi_change / total_ce_oi_change
+    #     print(f"PE Change / CE Change = {total_pe_oi_change:,.0f} / {total_ce_oi_change:,.0f}")
+    #     print(f"Calculated PCR Delta  = {calc_delta:.4f}")
+    #     print(f"Dashboard PCR Delta   = {calc_delta:.4f}")
+    # else:
+    #     print("CE OI Change is ZERO - cannot divide.")
+
+    # print("="*70 + "\n")
+
     history_row = pd.DataFrame([{
-        "Time": (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime("%H:%M:%S"),
+        "Date": (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).strftime("%d-%b-%Y"),
+        "Time": (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).strftime("%H:%M:%S"),
         "Spot": spot,
         "OI PCR": overall_oi_pcr,
         "Vol PCR": overall_vol_pcr,
@@ -623,7 +568,7 @@ while True:
         "Max Pain": int(max_pain),
     }])
 
-    print(history_row.to_string(index=False))
+    # print(history_row.to_string(index=False))
 
     if os.path.exists(history_file):
         try:
@@ -640,7 +585,7 @@ while True:
 
     chart_history = chart_history.tail(300)
     chart_history.to_csv(history_file, index=False)
-    print("CHART ROWS =", len(chart_history))
+    # print("CHART ROWS =", len(chart_history))
     
     option_chain["Strike"] = pd.to_numeric(option_chain["Strike"], errors="coerce")
     option_chain = option_chain.dropna(subset=["Strike"])

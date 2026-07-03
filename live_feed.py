@@ -142,6 +142,13 @@ with open("tokens.txt", "r") as f:
 
 tokens = [
     {
+        "instrument_token": "26000",
+        "exchange_segment": "nse_cm"
+    }
+]
+
+tokens += [
+    {
         "instrument_token": t,
         "exchange_segment": "nse_fo"
     }
@@ -151,11 +158,25 @@ tokens = [
 print("Total Tokens =", len(tokens))
 
 client.subscribe(
-    instrument_tokens=tokens,
-    isIndex=False,
+    instrument_tokens=[{
+        "instrument_token": "26000",
+        "exchange_segment": "nse_cm"
+    }],
+    isIndex=True,
     isDepth=False,
 )
 
+client.subscribe(
+    instrument_tokens=[
+        {
+            "instrument_token": t,
+            "exchange_segment": "nse_fo"
+        }
+        for t in token_lines
+    ],
+    isIndex=False,
+    isDepth=False,
+)
 print("Subscribed. Waiting for live ticks...")
 
 while True:

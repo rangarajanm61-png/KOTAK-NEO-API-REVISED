@@ -59,24 +59,24 @@ if "data" not in st.session_state:
     st.session_state.data = []
 
 # Read latest LTP file
-def read_ltp():
-    try:
-        df = pd.read_csv("live_ltp.csv")
+# def read_ltp():
+#     try:
+#         df = pd.read_csv("live_ltp.csv")
 
-        df["OI"] = df["OI"].fillna(0)
-        df["VOL"] = df["VOL"].fillna(0)
-        return df
-    except:
-        return pd.DataFrame(columns=["Time", "Symbol", "Token", "LTP", "VOL", "OI"])
+#         df["OI"] = df["OI"].fillna(0)
+#         df["VOL"] = df["VOL"].fillna(0)
+#         return df
+#     except:
+#         return pd.DataFrame(columns=["Time", "Symbol", "Token", "LTP", "VOL", "OI"])
 
-df = read_ltp()
+# df = read_ltp()
 
 # Read NIFTY spot from option_chain.csv Spot column first
 try:
     oc = pd.read_csv("option_chain.csv")
     import os, time
-    st.write("option_chain.csv modified:", time.ctime(os.path.getmtime("option_chain.csv")))
-    st.write("option_chain.csv rows:", len(oc))
+    # st.write("option_chain.csv modified:", time.ctime(os.path.getmtime("option_chain.csv")))
+    st.write("ption_chain.csv rows:", len(oc))
         
     option_df = oc.copy()
 
@@ -118,7 +118,7 @@ try:
         nifty_spot = float(oc["Spot"].dropna().max())
         print("SPOT COLUMN FOUND =", nifty_spot)
     else:
-        nifty_row = df[df["Symbol"].str.contains("NIFTY 50|NIFTY", na=False)]
+        nifty_row = option_df[option_df["Symbol"].str.contains("NIFTY 50|NIFTY", na=False)]
         nifty_spot = float(nifty_row["LTP"].iloc[-1]) if not nifty_row.empty else 0
 except:
         nifty_spot = "NA"
@@ -159,11 +159,12 @@ total_pe_vol = option_df["PE Volume"].sum()
 oi_pcr = round(total_pe_oi / total_ce_oi, 2) if total_ce_oi != 0 else 0
 vol_pcr = round(total_pe_vol / total_ce_vol, 2) if total_ce_vol != 0 else 0
 
-overall_oi_pcr_change = (
-    round(option_df["OI PCR Change"].sum(), 2)
-    if "OI PCR Change" in option_df.columns
-    else 0
-)
+print(option_df.columns.tolist())
+
+total_ce_oi_change = option_df["CE OI Change"].sum()
+total_pe_oi_change = option_df["PE OI Change"].sum()
+overall_oi_pcr_change = round(total_pe_oi_change / total_ce_oi_change, 2) if total_ce_oi_change != 0 else 0
+
 
 with placeholder.container():
 
@@ -199,27 +200,29 @@ full_df = full_df[full_df["Expiry"] == selected_expiry].copy()
 
 max_pain = calculate_max_pain(full_df)
 
-st.write("Max pain FULL strike range:", int(full_df["Strike"].min()), "to", int(full_df["Strike"].max()))
-st.write("Rows used for max pain:", len(full_df))
+# st.write("Max pain FULL strike range:", int(full_df["Strike"].min()), "to", int(full_df["Strike"].max()))
+# st.write("Rows used for max pain:", len(full_df))
 
 try:
     hist_df = pd.read_csv("chart_history.csv")
-    st.write("Chart History Columns:", hist_df.columns.tolist())
-    st.write(hist_df.tail())
+    # st.write("Chart History Columns:", hist_df.columns.tolist())
+    # st.write(hist_df.tail())
 except:
     hist_df = pd.DataFrame()
 
 summary_df = pd.DataFrame([{
-        "Spot": round(nifty_spot, 2),
-        "CE OI (L)": f"{total_ce_oi/100000:.1f}",
-        "PE OI (L)": f"{total_pe_oi/100000:.1f}",
-        "OI PCR": f"{oi_pcr:.2f}",
-        "PCR Δ": f"{overall_oi_pcr_change:.2f}",
-        "Vol PCR": f"{vol_pcr:.2f}",
-        "Max Pain": int(max_pain),
-        "Expiry": selected_expiry,
-        "Last Refresh Time": hist_df["Time"].iloc[-1] if not hist_df.empty and "Time" in hist_df.columns else ""
-    }])
+    "Spot": round(nifty_spot, 2),
+    "CE OI (L)": f"{total_ce_oi/100000:.1f}",
+    "PE OI (L)": f"{total_pe_oi/100000:.1f}",
+    "CE OI Δ (L)": f"{total_ce_oi_change/100000:.1f}",
+    "PE OI Δ (L)": f"{total_pe_oi_change/100000:.1f}",
+    "OI PCR": f"{oi_pcr:.2f}",
+    "PCR Δ": f"{overall_oi_pcr_change:.2f}",
+    "Vol PCR": f"{vol_pcr:.2f}",
+    "Max Pain": int(hist_df["Max Pain"].iloc[-1]) if not hist_df.empty and "Max Pain" in hist_df.columns else int(max_pain),
+    "Expiry": selected_expiry,
+    "Last Refresh Time": hist_df["Time"].iloc[-1] if not hist_df.empty and "Time" in hist_df.columns else "",
+}])
 st.dataframe(
         summary_df,
         width="stretch",
@@ -315,8 +318,15 @@ st.dataframe(display_df, width="stretch", height=620)
 # ---------------- LIVE CHARTS ----------------
 st.markdown("<br><br><br>", unsafe_allow_html=True)
 
+
 try:
     hist_df = pd.read_csv("chart_history.csv")
+    from datetime import datetime
+
+    if "Date" not in hist_df.columns:
+        hist_df["Date"] = datetime.now().strftime("%d-%b-%Y")
+
+    hist_df["Date"] = hist_df["Date"].fillna(datetime.now().strftime("%d-%b-%Y"))
 
     hist_df = hist_df.dropna(subset=["Time"])
     hist_df = hist_df[hist_df["Time"].astype(str) != "Ellipsis"]
@@ -324,20 +334,8 @@ try:
     hist_df["Spot"] = pd.to_numeric(hist_df["Spot"], errors="coerce")
     hist_df["OI PCR"] = pd.to_numeric(hist_df["OI PCR"], errors="coerce")
     hist_df["Vol PCR"] = pd.to_numeric(hist_df["Vol PCR"], errors="coerce")
-    st.write("Rows in history:", len(hist_df))
-    st.dataframe(hist_df.tail(5))
-
-    # st.markdown("### 1. NIFTY Spot vs Time")
-    # st.line_chart(hist_df.set_index("Time")[["Spot"]], height=250)
-
-    # st.markdown("### 2. OI PCR vs Time")
-    # st.line_chart(hist_df.set_index("Time")[["OI PCR"]], height=250)
-
-    # st.markdown("### 3. Volume PCR vs Time")
-    # st.line_chart(hist_df.set_index("Time")[["Vol PCR"]], height=250)
-
-    # st.markdown("### 4. OI PCR Change vs Time")
-    # st.line_chart(hist_df.set_index("Time")[["OI PCR Change"]], height=250)
+    # st.write("Rows in history:", len(hist_df))
+    # st.dataframe(hist_df.tail(5))
 
     st.markdown("### Live Combined Chart: Spot + PCR")
     
@@ -468,64 +466,79 @@ total_pe_vol = pd.to_numeric(pcr_df["PE Volume"], errors="coerce").fillna(0).sum
 oi_pcr = round(total_pe_oi / total_ce_oi, 2) if total_ce_oi > 0 else 0
 vol_pcr = round(total_pe_vol / total_ce_vol, 2) if total_ce_vol > 0 else 0
 
+st.markdown("### Trading Day History")
+
+today = datetime.now().strftime("%d-%b-%Y")
+
+if "Date" in hist_df.columns:
+    hist_df = hist_df[hist_df["Date"] == today]
+
+if not hist_df.empty:
+
+    history_cols = [
+        "Date",
+        "Time",
+        "Spot",
+        "OI PCR",
+        "Vol PCR",
+        "OI PCR Change",
+        "CE OI Change",
+        "PE OI Change",
+        "Max Pain"
+    ]
+
+    history_cols = [c for c in history_cols if c in hist_df.columns]
+    hist_display = hist_df[history_cols].tail(100)
+
+    st.dataframe(hist_display, width="stretch", height=300)
+
 # c1, c2 = st.columns(2)
 # c1.metric("OI PCR", oi_pcr)
 # c2.metric("Volume PCR", vol_pcr)
-if not df.empty:
-            df["LTP"] = pd.to_numeric(df["LTP"], errors="coerce")
-            df = df.dropna(subset=["LTP"])
+# if not df.empty:
+#             df["LTP"] = pd.to_numeric(df["LTP"], errors="coerce")
+#             df = df.dropna(subset=["LTP"])
 
-            df = df[df["Symbol"].str.contains("CE|PE", na=False)]
+#             df = df[df["Symbol"].str.contains("CE|PE", na=False)]
 
-            ce_data = df[df["Symbol"].str.contains("CE", na=False)]
-            pe_data = df[df["Symbol"].str.contains("PE", na=False)]
+#             ce_data = df[df["Symbol"].str.contains("CE", na=False)]
+#             pe_data = df[df["Symbol"].str.contains("PE", na=False)]
 
-            ce_ltp = float(ce_data["LTP"].iloc[-1]) if not ce_data.empty else 0
-            pe_ltp = float(pe_data["LTP"].iloc[-1]) if not pe_data.empty else 0
+#             ce_ltp = float(ce_data["LTP"].iloc[-1]) if not ce_data.empty else 0
+#             pe_ltp = float(pe_data["LTP"].iloc[-1]) if not pe_data.empty else 0
 
-            combined = ce_ltp + pe_ltp
+#             combined = ce_ltp + pe_ltp
 
-            ce_vol_display = f"{total_ce_vol/100000:.2f}L"
-            pe_vol_display = f"{total_pe_vol/100000:.2f}L"
-            ce_oi_display = f"{total_ce_oi/100000:.2f}L"
-            pe_oi_display = f"{total_pe_oi/100000:.2f}L"
+#             ce_vol_display = f"{total_ce_vol/100000:.2f}L"
+#             pe_vol_display = f"{total_pe_vol/100000:.2f}L"
+#             ce_oi_display = f"{total_ce_oi/100000:.2f}L"
+#             pe_oi_display = f"{total_pe_oi/100000:.2f}L"
             
-            if oi_pcr > 1.2 and vol_pcr > 1.2:
-                signal = "STRONG BULL"
-            elif oi_pcr < 0.8 and vol_pcr < 0.8:
-                signal = "STRONG BEAR"
-            else:
-                signal = "NEUTRAL"
+#             if oi_pcr > 1.2 and vol_pcr > 1.2:
+#                 signal = "STRONG BULL"
+#             elif oi_pcr < 0.8 and vol_pcr < 0.8:
+#                 signal = "STRONG BEAR"
+#             else:
+#                 signal = "NEUTRAL"
            
-            # col1, col2, col3, col4 = st.columns(4)
-            # col1.metric("LTP Ratio", round(pe_ltp / ce_ltp, 2) if ce_ltp != 0 else 0)
-            # col2.metric("OI PCR", oi_pcr)
-            # col3.metric("Vol PCR", vol_pcr)
-            # col4.metric("Signal", signal)
+                        
+#             left_col, right_col = st.columns([2, 2])
 
-            # col5, col6, col7, col8 = st.columns(4)
-            # col5.metric("CE OI", ce_oi_display)
-            # col6.metric("PE OI", pe_oi_display)
-            # col7.metric("CE Vol", ce_vol_display)
-            # col8.metric("PE Vol", pe_vol_display)
-            
-            left_col, right_col = st.columns([2, 2])
+#             with left_col:
+#                 st.subheader("Live Tick Table")
+#                 st.dataframe(df.tail(8), width="stretch", height=220)
 
-            with left_col:
-                st.subheader("Live Tick Table")
-                st.dataframe(df.tail(8), width="stretch", height=220)
+#             with right_col:
+#                 st.subheader("LTP Chart")
+#             df = df.tail(300)
+#             chart_df = df.pivot_table(
+#                 index="Time",
+#                 columns="Symbol",
+#                 values="LTP",
+#                 aggfunc="last"
+#             )
+#             chart_df = chart_df.tail(100)
 
-            with right_col:
-                st.subheader("LTP Chart")
-            df = df.tail(300)
-            chart_df = df.pivot_table(
-                index="Time",
-                columns="Symbol",
-                values="LTP",
-                aggfunc="last"
-            )
-            chart_df = chart_df.tail(100)
-
-            st.line_chart(chart_df)
+#             st.line_chart(chart_df)
             
             # time.sleep(5)

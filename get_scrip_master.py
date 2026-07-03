@@ -42,14 +42,35 @@ print("\n================================")
 print("LOGIN SUCCESSFUL")
 print("--------------------------------\n")
 
-quote = client.quotes(
-    instrument_tokens=[{
-        "exchange_segment": "nse_cm",
-        "instrument_token": "NIFTY"
-    }],
-    quote_type="ltp"
-)
+print("Downloading NSE master...")
 
-print(quote)
+url = client.scrip_master(exchange_segment="nse_cm")
+print(url)
 
+import pandas as pd
 
+df = pd.read_csv(url)
+
+print(df.columns.tolist())
+print(df.head())
+print("\nSearching for NIFTY...\n")
+
+result = df[
+    df["pSymbolName"].astype(str).str.contains("NIFTY", case=False, na=False)
+    |
+    df["pTrdSymbol"].astype(str).str.contains("NIFTY", case=False, na=False)
+]
+
+print(result[[
+    "pSymbol", "pSymbolName", "pTrdSymbol",
+    "pExchSeg", "pInstName", "pGroup",
+    "pAssetCode", "pSubGroup"
+]].head(20).to_string())
+
+for seg in ["nse_cm", "nse_fo", "nse_idx", "nse_index", "indices"]:
+    try:
+        print("\nSEGMENT:", seg)
+        url = client.scrip_master(exchange_segment=seg)
+        print(url)
+    except Exception as e:
+        print("ERROR:", e)
