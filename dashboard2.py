@@ -9,7 +9,6 @@ from datetime import datetime
 
 st.set_page_config(layout="wide")
 st_autorefresh(interval=5000, key="dashboard_refresh")
-# st.caption(f"Last dashboard refresh: {datetime.now().strftime('%H:%M:%S')}")
 st.markdown("""
 <style>
 
@@ -58,25 +57,12 @@ placeholder = st.empty()
 if "data" not in st.session_state:
     st.session_state.data = []
 
-# Read latest LTP file
-# def read_ltp():
-#     try:
-#         df = pd.read_csv("live_ltp.csv")
-
-#         df["OI"] = df["OI"].fillna(0)
-#         df["VOL"] = df["VOL"].fillna(0)
-#         return df
-#     except:
-#         return pd.DataFrame(columns=["Time", "Symbol", "Token", "LTP", "VOL", "OI"])
-
-# df = read_ltp()
-
 # Read NIFTY spot from option_chain.csv Spot column first
 try:
     oc = pd.read_csv("option_chain.csv")
     import os, time
     # st.write("option_chain.csv modified:", time.ctime(os.path.getmtime("option_chain.csv")))
-    st.write("ption_chain.csv rows:", len(oc))
+    st.write("Option_chain.csv rows:", len(oc))
         
     option_df = oc.copy()
 
@@ -123,32 +109,19 @@ try:
 except:
         nifty_spot = "NA"
 
-def calculate_max_pain(df, return_df=False):
-    mp_df = df[["Strike", "CE OI", "PE OI"]].copy()
+# ---------- Max Pain from main.py ----------
+try:
+    hist = pd.read_csv("chart_history.csv")
 
-    mp_df["Strike"] = pd.to_numeric(mp_df["Strike"], errors="coerce")
-    mp_df["CE OI"] = pd.to_numeric(mp_df["CE OI"], errors="coerce").fillna(0)
-    mp_df["PE OI"] = pd.to_numeric(mp_df["PE OI"], errors="coerce").fillna(0)
-    mp_df = mp_df.dropna(subset=["Strike"])
+    if not hist.empty and "Max Pain" in hist.columns:
+        valid_mp = pd.to_numeric(hist["Max Pain"], errors="coerce").dropna()
 
-    pain_list = []
+        if not valid_mp.empty:
+            max_pain = int(valid_mp.iloc[-1])
 
-    for expiry_price in sorted(mp_df["Strike"].unique()):
-        ce_pain = ((expiry_price - mp_df["Strike"]).clip(lower=0) * mp_df["CE OI"]).sum()
-        pe_pain = ((mp_df["Strike"] - expiry_price).clip(lower=0) * mp_df["PE OI"]).sum()
-        total_pain = ce_pain + pe_pain
-        pain_list.append((expiry_price, total_pain))
-
-    pain_df = pd.DataFrame(pain_list, columns=["Strike", "Total Pain"])
-
-    if pain_df.empty:
-        return 0
-
-    if return_df:
-        return pain_df
-
-    return int(pain_df.loc[pain_df["Total Pain"].idxmin(), "Strike"])
-    
+except Exception:
+    max_pain = 0
+      
 # PCR Calculations
 total_ce_oi = option_df["CE OI"].sum()
 total_pe_oi = option_df["PE OI"].sum()
@@ -198,15 +171,9 @@ if "Expiry" not in full_df.columns:
 
 full_df = full_df[full_df["Expiry"] == selected_expiry].copy()
 
-max_pain = calculate_max_pain(full_df)
-
-# st.write("Max pain FULL strike range:", int(full_df["Strike"].min()), "to", int(full_df["Strike"].max()))
-# st.write("Rows used for max pain:", len(full_df))
-
 try:
     hist_df = pd.read_csv("chart_history.csv")
-    # st.write("Chart History Columns:", hist_df.columns.tolist())
-    # st.write(hist_df.tail())
+    
 except:
     hist_df = pd.DataFrame()
 
@@ -433,7 +400,9 @@ st.subheader("TABLE 2 - OPTION GREEKS (ATM ±500)")
 table2_cols = [
     "Strike",
     "CE LTP",
+    "CE_IV",
     "PE LTP",
+    "PE_IV",
     "Spot",
     "CE Delta",
     "CE Gamma",

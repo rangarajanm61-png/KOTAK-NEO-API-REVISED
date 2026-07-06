@@ -184,12 +184,13 @@ while True:
     try:
         with open("nifty_spot_live.txt", "r") as f:
             spot = float(f.read().strip())
-        print("NEO LIVE NIFTY SPOT USED =", spot)
+
+        print("SPOT FILE VALUE USED =", spot)
 
     except Exception as e:
-        print("LIVE SPOT FILE ERROR =", e)
-        spot = float(input("Enter Spot manually: "))
-        print("MANUAL USED AS SPOT =", spot)
+            print("LIVE SPOT FILE ERROR =", e)
+            spot = float(input("Enter spot manually: "))
+            print("MANUAL USER SPOT =", spot)
 
     atm = round(spot / 50) * 50
     lower_strike = atm - 4000
@@ -258,11 +259,11 @@ while True:
     # Convert into option-chain format
     ce_df = final_ltp_df[final_ltp_df["Type"] == "CE"].copy()
     ce_df = ce_df[["Strike", "LTP", "OI", "Volume", "PriceChange", "PricePctChange", "IV"]]
-    ce_df.columns = ["Strike", "CE_LTP", "CE OI", "CE Volume", "CE Price Change", "CE Price % Change", "CE IV"]
+    ce_df.columns = ["Strike", "CE_LTP", "CE OI", "CE Volume", "CE Price Change", "CE Price % Change", "CE_IV"]
 
     pe_df = final_ltp_df[final_ltp_df["Type"] == "PE"].copy()
     pe_df = pe_df[["Strike", "LTP", "OI", "Volume", "PriceChange", "PricePctChange", "IV"]]
-    pe_df.columns = ["Strike", "PE_LTP", "PE OI", "PE Volume", "PE Price Change", "PE Price % Change", "PE IV"]
+    pe_df.columns = ["Strike", "PE_LTP", "PE OI", "PE Volume", "PE Price Change", "PE Price % Change", "PE_IV"]
 
     option_chain = pd.merge(
         ce_df,
@@ -320,8 +321,8 @@ while True:
         pe_decay = calculate_decay(spot, K, T, pe_sigma, float(row["PE_LTP"]), "PE")
         
         return pd.Series({
-        "CE IV": round(ce_sigma * 100, 2) if ce_sigma is not None else 0,
-        "PE IV": round(pe_sigma * 100, 2) if pe_sigma is not None else 0,
+        "CE_IV": round(ce_sigma * 100, 2) if ce_sigma is not None else 0,
+        "PE_IV": round(pe_sigma * 100, 2) if pe_sigma is not None else 0,
         "CE Delta": ce_delta,
         "CE Gamma": ce_gamma,
         "CE Theta": ce_theta,
@@ -470,25 +471,29 @@ while True:
         if r["CE OI Change"] != 0 else 0,
         axis=1
     )
+    
     def calculate_max_pain(df):
         strikes = sorted(df["Strike"].dropna().unique())
         pain_list = []
 
         for expiry_price in strikes:
-            ce_pain = ((df["Strike"] - expiry_price).clip(lower=0) * df["CE OI"]).sum()
-            pe_pain = ((expiry_price - df["Strike"]).clip(lower=0) * df["PE OI"]).sum()
+            ce_pain = ((expiry_price - df["Strike"]).clip(lower=0) * df["CE OI"]).sum()
+
+            pe_pain = ((df["Strike"] - expiry_price).clip(lower=0) * df["PE OI"]).sum()
+
             total_pain = ce_pain + pe_pain
+
             pain_list.append((expiry_price, total_pain))
 
-        pain_df = pd.DataFrame(
-            pain_list,
-            columns=["Strike", "Total Pain"]
-        )
+            # print(f"{expiry_price:6.0f} | CE Pain={ce_pain:15.0f} | PE Pain={pe_pain:15.0f} | Total={total_pain:15.0f}")
 
-        return int(
-            pain_df.loc[pain_df["Total Pain"].idxmin(), "Strike"]
-        )
+            # pain_list.append((expiry_price, total_pain))
 
+        pain_df = pd.DataFrame(pain_list, columns=["Strike", "Total Pain"])
+
+        return pain_df.loc[pain_df["Total Pain"].idxmin(), "Strike"]
+        
+        
     # ---------- CHART HISTORY ----------
     from datetime import datetime
 
@@ -517,6 +522,11 @@ while True:
     overall_oi_pcr_change = round(total_pe_oi_change / total_ce_oi_change, 2) if total_ce_oi_change != 0 else 0
 
     max_pain = calculate_max_pain(option_chain)
+    check = option_chain[option_chain["Strike"].isin([24050, 24100, 24150, 24200, 24400])]
+
+    print("\n===== OI CHECK =====")
+    print(check[["Strike", "CE OI", "PE OI"]].to_string(index=False))
+    print("====================\n")
 
     if max_pain == 0 or pd.isna(max_pain):
         if os.path.exists("chart_history.csv"):
@@ -746,7 +756,7 @@ while True:
     table2_cols = [
     "Strike",
     "CE_LTP", "PE_LTP", "Spot",
-    "CE IV", "PE IV",
+    "CE_IV", "PE_IV",
     "CE Delta", "CE Gamma", "CE Theta", "CE Decay", "CE Vega",
     "PE Delta", "PE Gamma", "PE Theta", "PE Decay", "PE Vega",
 ]
