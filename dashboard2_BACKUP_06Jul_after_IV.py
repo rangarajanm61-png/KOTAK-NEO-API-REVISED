@@ -99,21 +99,17 @@ try:
     total_pe_oi = option_df["PE OI"].sum()
 
     oi_pcr = round(total_pe_oi / total_ce_oi, 2) if total_ce_oi != 0 else 0
-
-except Exception as e:
-    st.error(f"Error reading option_chain.csv: {e}")
-    st.stop()    
-try:
-    if "Spot" in option_df.columns:
-        spot_series = pd.to_numeric(option_df["Spot"], errors="coerce").dropna()
-        nifty_spot = float(spot_series.iloc[-1]) if not spot_series.empty else 0
+    
+    if "Spot" in oc.columns:
+        nifty_spot = float(oc["Spot"].dropna().max())
+        print("SPOT COLUMN FOUND =", nifty_spot)
     else:
-        nifty_spot = 0
-except Exception:
-    nifty_spot = 0
+        nifty_row = option_df[option_df["Symbol"].str.contains("NIFTY 50|NIFTY", na=False)]
+        nifty_spot = float(nifty_row["LTP"].iloc[-1]) if not nifty_row.empty else 0
+except:
+        nifty_spot = "NA"
 
-
-# -------- Max Pain from main.py --------
+# ---------- Max Pain from main.py ----------
 try:
     hist = pd.read_csv("chart_history.csv")
 
@@ -122,10 +118,6 @@ try:
 
         if not valid_mp.empty:
             max_pain = int(valid_mp.iloc[-1])
-        else:
-            max_pain = 0
-    else:
-        max_pain = 0
 
 except Exception:
     max_pain = 0

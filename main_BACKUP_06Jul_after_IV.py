@@ -220,17 +220,19 @@ while True:
         if isinstance(ltp_data, list) and len(ltp_data) > 0:
             ltp_row = ltp_data[0]
 
-        if int(row["Strike"]) == 24400:
-            print("\n===== RAW NEO OI DEBUG =====")
-            print("Strike:", row.get("Strike"))
-            print("Row columns:", list(row.index))
-            print("Token:", token)
-            print("open_int:", ltp_row.get("open_int"))
-            print("oi:", ltp_row.get("oi"))
-            print("OI:", ltp_row.get("OI"))
-            print("volume:", ltp_row.get("last_volume"))
-            print("all keys:", ltp_row.keys())
-            print("============================")
+        #     if int(row["Strike"]) == 24000:
+        #         print("\n========== RAW 24000 ==========")
+        #         for k, v in ltp_row.items():
+        #             print(f"{k}: {v}")
+        #             print("================================\n")
+
+            # if int(row["Strike"]) == 24000:
+            #     print("\n===== VALUES GOING TO DASHBOARD =====")
+            #     print(f"Neo OI       : {ltp_row.get('open_int', 0)}")
+            #     print(f"Neo Volume   : {ltp_row.get('last_volume', 0)}")
+            #     print(f"Dashboard OI : {int(ltp_row.get('open_int', 0) or 0)}")
+            #     print(f"Dashboard Vol: {int(ltp_row.get('last_volume', 0) or 0)}")
+            #     print("====================================")
 
             ltp_rows.append({
                 "Strike": int(row["Strike"]),
@@ -269,6 +271,7 @@ while True:
         on="Strike"
     )
    
+
     T = get_time_to_expiry(selected_expiry)
 
     # Temporary - next we'll freeze this like Sensibull
@@ -417,18 +420,6 @@ while True:
 
     baseline_df = pd.read_csv(opening_file)
 
-    baseline_df["Strike"] = pd.to_numeric(baseline_df["Strike"], errors="coerce")
-    baseline_df["CE OI Open"] = pd.to_numeric(baseline_df["CE OI Open"], errors="coerce")
-    baseline_df["PE OI Open"] = pd.to_numeric(baseline_df["PE OI Open"], errors="coerce")
-
-    print("\nBASELINE FILE CHECK")
-    print(baseline_df[baseline_df["Strike"].isin([24050,24100,24150,24200,24400])])
-
-    option_chain = option_chain.drop(
-        columns=["CE OI Open", "PE OI Open"],
-        errors="ignore"
-    )
-
     baseline_df = baseline_df[[
         "Strike",
         "CE OI Open",
@@ -460,24 +451,6 @@ while True:
     # ----------------------------------------------------
     option_chain["CE OI Change"] = option_chain["CE OI"] - option_chain["CE OI Open"]
     option_chain["PE OI Change"] = option_chain["PE OI"] - option_chain["PE OI Open"]
-
-    debug = option_chain[option_chain["Strike"].isin([24050,24100,24150,24200,24400])]
-
-    print("\n===== OI CHANGE CHECK =====")
-    print(
-        debug[
-            [
-                "Strike",
-                "CE OI",
-                "CE OI Open",
-                "CE OI Change",
-                "PE OI",
-                "PE OI Open",
-                "PE OI Change",
-            ]
-        ].to_string(index=False)
-    )
-    print("===============================\n")
     
     # Calculate OI Change %
     option_chain["CE OI Change %"] = option_chain.apply(
