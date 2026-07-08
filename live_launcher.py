@@ -109,9 +109,33 @@ if login_result.returncode != 0:
     raise SystemExit
 
 print("\nSTEP 2 : SELECT EXPIRY")
+
+print("\nOpen main.py expiry list reference:")
+print("1. 04Aug2026")
+print("2. 11Aug2026")
+print("3. 14Jul2026")
+print("4. 21Jul2026")
+print("5. 24Dec2029")
+print("6. 24Jun2031")
+print("7. 25Aug2026")
+print("8. 25Jun2030")
+print("9. 26Dec2028")
+print("10. 26Jun2029")
+print("11. 27Jun2028")
+print("12. 28Dec2027")
+print("13. 28Jul2026")
+print("14. 29Dec2026")
+print("15. 29Jun2027")
+print("16. 29Sep2026")
+print("17. 30Mar2027")
+print("18. 31Dec2030")
+
 expiry = input("Enter Expiry Number: ").strip()
+
 with open("selected_expiry.txt", "w") as f:
     f.write(expiry)
+
+print(f"Selected Expiry Number saved: {expiry}")
 
 def show_file_time(label, file_name):
     if os.path.exists(file_name):
@@ -189,8 +213,10 @@ print("\nSTEP 6 : START DASHBOARD")
 
 while True:
 
-    print("\nAvailable ports : 8502  8503  8504")
-    port = input("Enter dashboard port [8502]: ").strip()
+    print("\nAvailable ports : 8502  8503  8504", flush=True)
+
+    print(">>> STEP 6 INPUT IS PORT NUMBER, NOT TOTP <<<", flush=True)
+    port = input("Enter PORT No for dashboard [8502 / 8503 / 8504]: ").strip()
 
     if port == "":
         port = "8502"
@@ -213,6 +239,8 @@ while True:
         str(port_num)
     ])
 
+    print(f"\nDashboard launch requested on port {port_num}.")
+    print("Waiting for dashboard to start...")
     time.sleep(5)
 
     if dashboard_process.poll() is None:

@@ -4,7 +4,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 # import time
-from option_chain import calculate_pcr, expiry_summary
+# from option_chain import calculate_pcr, expiry_summary
 from datetime import datetime
 
 st.set_page_config(layout="wide")
@@ -248,7 +248,11 @@ if "PE Volume" not in option_df.columns:
 
 pcr_df = option_df.copy()
 
-summary_df = expiry_summary(pcr_df)
+try:
+    summary_df = pd.read_csv("summary.csv")
+except Exception as e:
+    st.warning(f"summary.csv not ready: {e}")
+    summary_df = pd.DataFrame()
 
 st.subheader("Table 1 - Price / OI / PCR")
 

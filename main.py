@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from datetime import time as dt_time
 from option_chain import (
     calculate_pcr,
+    expiry_summary,
     calculate_greeks,
     get_time_to_expiry,
     calculate_iv,
@@ -130,32 +131,38 @@ while True:
 
     expiry_list = sorted(option_df["pExpiryDate"].dropna().unique())
 
-    print("\nAVAILABLE EXPIRIES")
-    for i, e in enumerate(expiry_list, start=1):
-        print(f"{i}. {e}")
+    if not os.path.exists("selected_expiry_runtime.txt"):
 
-    if os.path.exists("selected_expiry.txt") and "LAUNCHER_MODE" in os.environ:
-        with open("selected_expiry.txt", "r") as f:
-            expiry_choice = int(f.read().strip())
-        print(f"Using Launcher Expiry : {expiry_choice}")
+        print("\nAVAILABLE EXPIRIES")
+        for i, e in enumerate(expiry_list, start=1):
+            print(f"{i}. {e}")
+
+        if os.path.exists("selected_expiry.txt") and os.environ.get("LAUNCHER_MODE") == "1":
+            with open("selected_expiry.txt", "r") as f:
+                expiry_choice = int(f.read().strip())
+            print(f"Using Launcher Expiry : {expiry_choice}")
+        else:
+            expiry_choice = int(input("Select Expiry (1,2,3...): "))
+
+        with open("selected_expiry_runtime.txt", "w") as f:
+            f.write(str(expiry_choice))
+
     else:
-        expiry_choice = int(input("Select Expiry (1,2,3...): "))
+        with open("selected_expiry_runtime.txt", "r") as f:
+            expiry_choice = int(f.read().strip())
+        print("Using same Expiry =", expiry_choice)
 
     selected_expiry = expiry_list[expiry_choice - 1]
+
     print("Selected Expiry =", selected_expiry)
 
     option_df = option_df[
     option_df["pExpiryDate"] == selected_expiry
     ]
-
     option_df = option_df[
     option_df["pTrdSymbol"].astype(str).str.endswith(("CE", "PE"))
     ].copy()
-
-    # print("OPTION ROWS AFTER EXPIRY FILTER =", len(option_df))
-    # print(option_df[["Strike", "pOptionType", "pTrdSymbol", "pExpiryDate"]].head(20).to_string(index=False))
-
-    # Extract strike from symbol
+    
     option_df["Strike"] = (
         option_df["pTrdSymbol"]
         .str.extract(r"(\d{5})(?=CE|PE)")
@@ -641,6 +648,10 @@ while True:
     option_chain_full.to_csv("option_chain_full.csv", index=False)
 
     option_chain.to_csv("option_chain.csv", index=False)
+
+    summary_df = expiry_summary(option_chain)
+    summary_df.to_csv("summary.csv", index=False)
+    print("summary.csv updated")
 
     # ATM CE / PE token extraction for live_feed.py
     atm_ce = option_df[

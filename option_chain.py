@@ -209,7 +209,7 @@ def expiry_summary(pcr_df):
         "CE OI": "sum",
         "PE OI": "sum",
         "CE Volume": "sum",
-        "PE Volume": "sum"
+        "PE Volume": "sum",
     }).reset_index()
 
     summary["OI PCR"] = summary.apply(
@@ -221,5 +221,9 @@ def expiry_summary(pcr_df):
         lambda x: round(x["PE Volume"] / x["CE Volume"], 2) if x["CE Volume"] > 0 else 0,
         axis=1
     )
+
+    summary["PCR Change"] = pcr_df["OI PCR Change"].mean() if "OI PCR Change" in pcr_df.columns else 0
+
+    summary.to_csv("summary.csv", index=False)
 
     return summary
