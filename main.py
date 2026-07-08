@@ -130,15 +130,16 @@ while True:
 
     expiry_list = sorted(option_df["pExpiryDate"].dropna().unique())
 
-    if "expiry_choice" not in globals():
-        print("\nAVAILABLE EXPIRIES:")
-        for i, e in enumerate(expiry_list, start=1):
-            print(f"{i}. {e}")
+    print("\nAVAILABLE EXPIRIES")
+    for i, e in enumerate(expiry_list, start=1):
+        print(f"{i}. {e}")
 
-        expiry_choice = int(input("Select Expiry (1,2,3...): "))
-
+    if os.path.exists("selected_expiry.txt") and "LAUNCHER_MODE" in os.environ:
+        with open("selected_expiry.txt", "r") as f:
+            expiry_choice = int(f.read().strip())
+        print(f"Using Launcher Expiry : {expiry_choice}")
     else:
-        print("Using same Expiry =", expiry_choice)
+        expiry_choice = int(input("Select Expiry (1,2,3...): "))
 
     selected_expiry = expiry_list[expiry_choice - 1]
     print("Selected Expiry =", selected_expiry)
@@ -193,8 +194,8 @@ while True:
             print("MANUAL USER SPOT =", spot)
 
     atm = round(spot / 50) * 50
-    lower_strike = atm - 4000
-    upper_strike = atm + 4000
+    lower_strike = atm - 500
+    upper_strike = atm + 500
 
     ltp_df = option_df[
         (option_df["Strike"] >= lower_strike) &
@@ -220,17 +221,17 @@ while True:
         if isinstance(ltp_data, list) and len(ltp_data) > 0:
             ltp_row = ltp_data[0]
 
-        if int(row["Strike"]) == 24400:
-            print("\n===== RAW NEO OI DEBUG =====")
-            print("Strike:", row.get("Strike"))
-            print("Row columns:", list(row.index))
-            print("Token:", token)
-            print("open_int:", ltp_row.get("open_int"))
-            print("oi:", ltp_row.get("oi"))
-            print("OI:", ltp_row.get("OI"))
-            print("volume:", ltp_row.get("last_volume"))
-            print("all keys:", ltp_row.keys())
-            print("============================")
+        # if int(row["Strike"]) == 24400:
+        #     print("\n===== RAW NEO OI DEBUG =====")
+        #     print("Strike:", row.get("Strike"))
+        #     print("Row columns:", list(row.index))
+        #     print("Token:", token)
+        #     print("open_int:", ltp_row.get("open_int"))
+        #     print("oi:", ltp_row.get("oi"))
+        #     print("OI:", ltp_row.get("OI"))
+        #     print("volume:", ltp_row.get("last_volume"))
+        #     print("all keys:", ltp_row.keys())
+        #     print("============================")
 
             ltp_rows.append({
                 "Strike": int(row["Strike"]),
