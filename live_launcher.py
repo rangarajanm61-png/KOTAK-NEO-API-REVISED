@@ -80,7 +80,7 @@ def restart_spot_reader():
         pass
 
     print("Restarting spot reader...")
-    spot_process = subprocess.Popen(["python", "nifty_index_live_test.py"])
+    spot_process = subprocess.Popen(["python3", "nifty_index_live_test.py"])
 
 
 def restart_main():
@@ -95,7 +95,7 @@ def restart_main():
     env = os.environ.copy()
     env["LAUNCHER_MODE"] = "1"
 
-    main_process = subprocess.Popen(["python", "main.py"], env=env)
+    main_process = subprocess.Popen(["python3", "main.py"], env=env)
 
 
 print("=" * 55)
@@ -103,7 +103,7 @@ print("        KOTAK NEO LIVE SYSTEM V3.2")
 print("=" * 55)
 
 print("\nSTEP 1 : LOGIN")
-login_result = subprocess.run(["python", "login_once.py"])
+login_result = subprocess.run(["python3", "login_once.py"])
 if login_result.returncode != 0:
     print("❌ Login failed. Stop.")
     raise SystemExit
@@ -153,7 +153,7 @@ if ans == "y":
 
     env = os.environ.copy()
     env["LAUNCHER_MODE"] = "1"
-    main_process = subprocess.Popen(["python", "main.py"], env=env)
+    main_process = subprocess.Popen(["python3", "main.py"], env=env)
 
     print("Waiting 60 seconds for main.py to create latest closing OI file...")
     time.sleep(60)
@@ -196,7 +196,7 @@ else:
 show_file_time("Opening baseline file", OPENING_FILE)
     
 print("\nSTEP 4 : START SPOT READER")
-spot_process = subprocess.Popen(["python", "nifty_index_live_test.py"])
+spot_process = subprocess.Popen(["python3", "nifty_index_live_test.py"])
 
 if not wait_for_spot():
     raise SystemExit
@@ -204,7 +204,7 @@ if not wait_for_spot():
 print("\nSTEP 5 : START MAIN")
 env = os.environ.copy()
 env["LAUNCHER_MODE"] = "1"
-main_process = subprocess.Popen(["python", "main.py"], env=env)
+main_process = subprocess.Popen(["python3", "main.py"], env=env)
 
 if not wait_for_option_chain():
     raise SystemExit

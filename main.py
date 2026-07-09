@@ -192,13 +192,12 @@ while True:
     try:
         with open("nifty_spot_live.txt", "r") as f:
             spot = float(f.read().strip())
+    except Exception:
+        spot = 0
 
-        print("SPOT FILE VALUE USED =", spot)
-
-    except Exception as e:
-            print("LIVE SPOT FILE ERROR =", e)
-            spot = float(input("Enter spot manually: "))
-            print("MANUAL USER SPOT =", spot)
+    # temporary fallback: use ATM from option LTP data if spot file is stale
+    if spot <= 0 or spot == 24298:
+        spot = float(option_df["Strike"].median())
 
     atm = round(spot / 50) * 50
     lower_strike = atm - 500
@@ -254,7 +253,9 @@ while True:
             })
         else:
             pass
-        
+    print("DEBUG final_ltp_df columns:", ltp_df.columns.tolist())
+    print(ltp_df.head(3).to_string())  
+
     final_ltp_df = pd.DataFrame(ltp_rows)
     final_ltp_df = final_ltp_df[final_ltp_df["LTP"] > 0].copy()
 

@@ -50,11 +50,12 @@ tokens = [
 ]
 
 def on_message(message):
+    
     try:
         data = message.get("data", [])
 
         for tick in data:
-                print("RAW TICK =", tick)
+                
                 token = str(tick.get("tk")).strip()
 
                 ltp = (
@@ -63,6 +64,9 @@ def on_message(message):
                     or tick.get("last_traded_price")
                     or 0
                 )
+                if ltp:
+                    with open("live_ltp.csv", "a") as f:
+                        f.write(f"{datetime.now()},{token},{ltp}\n")
 
                 volume = (
                     tick.get("v")
@@ -84,8 +88,6 @@ def on_message(message):
                     symbol = str(tick.get("tk", ""))
 
                 
-                # print("MATCHED SYMBOL =", symbol, "TOKEN =", token)
-
                 with open("live_ltp.csv", "a") as f:
 
                     f.write(

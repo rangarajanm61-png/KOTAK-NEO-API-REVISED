@@ -44,7 +44,7 @@ def on_message(message):
         data = message.get("data", [])
         if data:
             tick = data[0]
-            spot = tick.get("ltp") or tick.get("last_price") or tick.get("c")
+            spot = tick.get("ltp") or tick.get("last_price") or tick.get("ltpPrice") or tick.get("c")
 
             if spot:
                 with open("nifty_spot_live.txt", "w") as f:
@@ -67,12 +67,15 @@ client.on_open = on_open
 
 client.subscribe(
     instrument_tokens=[{
-        "instrument_token": "26000",
-        "exchange_segment": "nse_cm"
+        "instrument_token": "1468550600",
+        "exchange_segment": "nse_fo"
     }],
     isIndex=False,
     isDepth=False
 )
+
+
+print("Subscribed NIFTY index. Waiting for live ticks...")
 
 while True:
     time.sleep(1)

@@ -473,152 +473,53 @@ if not hist_df.empty:
 
     st.dataframe(hist_display, width="stretch", height=300)
 
-    st.subheader("Table 3 - Payoff Calculator")
+# c1, c2 = st.columns(2)
+# c1.metric("OI PCR", oi_pcr)
+# c2.metric("Volume PCR", vol_pcr)
+# if not df.empty:
+#             df["LTP"] = pd.to_numeric(df["LTP"], errors="coerce")
+#             df = df.dropna(subset=["LTP"])
 
-    lot_size = 65
-    spot_now = float(option_df["Spot"].iloc[0]) if "Spot" in option_df.columns and not option_df.empty else 0
+#             df = df[df["Symbol"].str.contains("CE|PE", na=False)]
 
-    strikes = sorted(option_df["Strike"].dropna().astype(int).unique().tolist())
+#             ce_data = df[df["Symbol"].str.contains("CE", na=False)]
+#             pe_data = df[df["Symbol"].str.contains("PE", na=False)]
 
-    st.write(f"Current Spot: {spot_now:.2f}")
+#             ce_ltp = float(ce_data["LTP"].iloc[-1]) if not ce_data.empty else 0
+#             pe_ltp = float(pe_data["LTP"].iloc[-1]) if not pe_data.empty else 0
 
-    num_legs = st.number_input("Number of legs", min_value=1, max_value=6, value=2, step=1)
+#             combined = ce_ltp + pe_ltp
 
-    legs = []
+#             ce_vol_display = f"{total_ce_vol/100000:.2f}L"
+#             pe_vol_display = f"{total_pe_vol/100000:.2f}L"
+#             ce_oi_display = f"{total_ce_oi/100000:.2f}L"
+#             pe_oi_display = f"{total_pe_oi/100000:.2f}L"
+            
+#             if oi_pcr > 1.2 and vol_pcr > 1.2:
+#                 signal = "STRONG BULL"
+#             elif oi_pcr < 0.8 and vol_pcr < 0.8:
+#                 signal = "STRONG BEAR"
+#             else:
+#                 signal = "NEUTRAL"
+           
+                        
+#             left_col, right_col = st.columns([2, 2])
 
-    for i in range(num_legs):
-        st.markdown(f"### Leg {i+1}")
+#             with left_col:
+#                 st.subheader("Live Tick Table")
+#                 st.dataframe(df.tail(8), width="stretch", height=220)
 
-        c1, c2, c3, c4, c5 = st.columns(5)
+#             with right_col:
+#                 st.subheader("LTP Chart")
+#             df = df.tail(300)
+#             chart_df = df.pivot_table(
+#                 index="Time",
+#                 columns="Symbol",
+#                 values="LTP",
+#                 aggfunc="last"
+#             )
+#             chart_df = chart_df.tail(100)
 
-        with c1:
-            side = st.selectbox(
-                "Buy/Sell",
-                ["BUY", "SELL"],
-                key=f"side_{i}"
-            )
-
-        with c2:
-            opt_type = st.selectbox(
-                "CE/PE",
-                ["CE", "PE"],
-                key=f"type_{i}"
-            )
-
-        with c3:
-            strike = st.selectbox(
-                "Strike",
-                strikes,
-                index=len(strikes)//2 if strikes else 0,
-                key=f"strike_{i}"
-            )
-
-        with c4:
-            lots = st.number_input(
-                "Lots",
-                min_value=1,
-                max_value=50,
-                value=1,
-                step=1,
-                key=f"lots_{i}"
-            )
-
-        row = option_df[option_df["Strike"].astype(int) == int(strike)]
-
-        if not row.empty:
-            if opt_type == "CE":
-                live_premium = float(row["CE LTP"].iloc[0]) if "CE LTP" in row.columns else 0
-            else:
-                live_premium = float(row["PE LTP"].iloc[0]) if "PE LTP" in row.columns else 0
-        else:
-            live_premium = 0
-
-        with c5:
-            premium = st.number_input(
-                "Premium",
-                min_value=0.0,
-                value=float(live_premium),
-                step=0.05,
-                key=f"premium_{i}"
-            )
-
-        legs.append({
-            "side": side,
-            "type": opt_type,
-            "strike": float(strike),
-            "premium": float(premium),
-            "qty": int(lots) * lot_size
-        })
-
-
-    if spot_now > 0 and legs:
-        import numpy as np
-        import pandas as pd
-        import plotly.graph_objects as go
-
-        min_strike = min([leg["strike"] for leg in legs])
-        max_strike = max([leg["strike"] for leg in legs])
-
-        price_range = np.arange(
-            max(0, min_strike - 500),
-            max_strike + 501,
-            25
-        )
-
-        payoff_values = []
-
-        for expiry_price in price_range:
-            total_payoff = 0
-
-            for leg in legs:
-                if leg["type"] == "CE":
-                    intrinsic = max(expiry_price - leg["strike"], 0)
-                else:
-                    intrinsic = max(leg["strike"] - expiry_price, 0)
-
-                if leg["side"] == "BUY":
-                    leg_payoff = (intrinsic - leg["premium"]) * leg["qty"]
-                else:
-                    leg_payoff = (leg["premium"] - intrinsic) * leg["qty"]
-
-                total_payoff += leg_payoff
-
-            payoff_values.append(total_payoff)
-
-        payoff_df = pd.DataFrame({
-            "Expiry Price": price_range,
-            "Payoff": payoff_values
-        })
-
-        live_pl = payoff_df.iloc[(payoff_df["Expiry Price"] - spot_now).abs().argsort()[:1]]["Payoff"].iloc[0]
-
-        max_profit = payoff_df["Payoff"].max()
-        max_loss = payoff_df["Payoff"].min()
-
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Live P/L near Spot", f"₹{live_pl:,.0f}")
-        c2.metric("Max Profit in Range", f"₹{max_profit:,.0f}")
-        c3.metric("Max Loss in Range", f"₹{max_loss:,.0f}")
-
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=payoff_df["Expiry Price"],
-            y=payoff_df["Payoff"],
-            mode="lines",
-            name="Payoff"
-        ))
-
-        fig.add_vline(x=spot_now, line_dash="dash", annotation_text="Spot")
-        fig.add_hline(y=0, line_dash="dot")
-
-        fig.update_layout(
-            title="Payoff at Expiry",
-            xaxis_title="NIFTY Expiry Price",
-            yaxis_title="Profit / Loss ₹",
-            height=500
-        )
-
-        st.plotly_chart(fig, use_container_width=True)
-
-        st.dataframe(payoff_df, use_container_width=True)
-
+#             st.line_chart(chart_df)
+            
+            # time.sleep(5)
