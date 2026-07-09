@@ -397,7 +397,7 @@ try:
         )
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
     
 except Exception as e:
     st.warning(f"Charts not ready: {e}")
@@ -440,7 +440,7 @@ table2_cols = [c for c in table2_cols if c in pcr_df.columns]
 
 st.dataframe(
     pcr_df[table2_cols],
-    use_container_width=True,
+    width="stretch",
     height=850
 )
 total_ce_vol = pd.to_numeric(pcr_df["CE Volume"], errors="coerce").fillna(0).sum()
@@ -662,4 +662,4 @@ fig_payoff.update_layout(
     yaxis_title="Profit / Loss ₹"
 )
 
-st.plotly_chart(fig_payoff, use_container_width=True)
+st.plotly_chart(fig_payoff, width="stretch")
