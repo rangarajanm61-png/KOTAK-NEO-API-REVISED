@@ -67,8 +67,8 @@ client.on_open = on_open
 
 client.subscribe(
     instrument_tokens=[{
-        "instrument_token": "1468550600",
-        "exchange_segment": "nse_fo"
+        "instrument_token": "26000",
+        "exchange_segment": "nse_cm"
     }],
     isIndex=False,
     isDepth=False
