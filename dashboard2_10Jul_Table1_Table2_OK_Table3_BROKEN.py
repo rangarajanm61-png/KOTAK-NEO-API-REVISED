@@ -9,7 +9,6 @@ import plotly.express as px
 # from option_chain import calculate_pcr, expiry_summary
 from datetime import datetime
 from zoneinfo import ZoneInfo
-
 IST = ZoneInfo("Asia/Kolkata")
 
 st.set_page_config(layout="wide")
@@ -59,7 +58,7 @@ div[data-testid="stMetric"] {
 def refresh_dashboard():
     st.write(
         "Dashboard rerun:",
-        datetime.now(IST).strftime("%H:%M:%S")
+        datetime.now().strftime("%H:%M:%S")
     )
     placeholder = st.empty()
 
@@ -149,7 +148,7 @@ def refresh_dashboard():
     oi_pcr = round(total_pe_oi / total_ce_oi, 2) if total_ce_oi != 0 else 0
     vol_pcr = round(total_pe_vol / total_ce_vol, 2) if total_ce_vol != 0 else 0
 
-    # print(option_df.columns.tolist())
+    print(option_df.columns.tolist())
 
     total_ce_oi_change = option_df["CE OI Change"].sum()
     total_pe_oi_change = option_df["PE OI Change"].sum()
@@ -159,7 +158,7 @@ def refresh_dashboard():
 
         
         st.markdown("### NIFTY Option Dashboard")
-        st.caption(f"Date : {datetime.now(IST).strftime('%d-%b-%Y')}")
+        st.caption(f"Date : {datetime.now().strftime('%d-%b-%Y')}")
         
         if "Expiry" in option_df.columns:
             expiry_list = sorted(option_df["Expiry"].dropna().unique())
@@ -204,7 +203,7 @@ def refresh_dashboard():
             "Max Pain": int(hist_df["Max Pain"].iloc[-1]) if not hist_df.empty and "Max Pain" in hist_df.columns else int(max_pain),
             "Expiry": selected_expiry,
             "Data Time": hist_df["Time"].iloc[-1] if not hist_df.empty else "",
-            "Dashboard Time": datetime.now(IST).strftime("%H:%M:%S")
+            "Dashboard Time": datetime.now().strftime("%H:%M:%S")
         }])
         st.dataframe(
                 summary_df,
@@ -310,9 +309,9 @@ def refresh_dashboard():
             hist_df = pd.read_csv("chart_history.csv")
             
             if "Date" not in hist_df.columns:
-                hist_df["Date"] = datetime.now(IST).strftime("%d-%b-%Y")
+                hist_df["Date"] = datetime.now().strftime("%d-%b-%Y")
 
-            hist_df["Date"] = hist_df["Date"].fillna(datetime.now(IST).strftime("%d-%b-%Y"))
+            hist_df["Date"] = hist_df["Date"].fillna(datetime.now().strftime("%d-%b-%Y"))
 
             hist_df = hist_df.dropna(subset=["Time"])
             hist_df = hist_df[hist_df["Time"].astype(str) != "Ellipsis"]
@@ -456,7 +455,7 @@ def refresh_dashboard():
 
         st.markdown("### Trading Day History")
 
-        today = datetime.now(IST).strftime("%d-%b-%Y")
+        today = datetime.now().strftime("%d-%b-%Y")
 
         if "Date" in hist_df.columns:
             hist_df = hist_df[hist_df["Date"] == today]
@@ -482,224 +481,220 @@ def refresh_dashboard():
 
 refresh_dashboard()
 
-# # Read latest data separately for Table 3
-# try:
-#     option_df = pd.read_csv("option_chain.csv")
+# Read latest data separately for Table 3
+try:
+    option_df = pd.read_csv("option_chain.csv")
 
-#     option_df.columns = option_df.columns.str.strip()
+    option_df["Strike"] = pd.to_numeric(
+        option_df["Strike"], errors="coerce"
+    )
 
-#     option_df.rename(
-#         columns={
-#             "CE_LTP": "CE LTP",
-#             "PE_LTP": "PE LTP"
-#         },
-#         inplace=True
-#     )
+    option_df["CE LTP"] = pd.to_numeric(
+        option_df["CE LTP"], errors="coerce"
+    ).fillna(0)
 
-#     option_df["Strike"] = pd.to_numeric(
-#         option_df["Strike"], errors="coerce"
-#     )
+    option_df["PE LTP"] = pd.to_numeric(
+        option_df["PE LTP"], errors="coerce"
+    ).fillna(0)
 
-#     option_df["CE LTP"] = pd.to_numeric(
-#         option_df["CE LTP"], errors="coerce"
-#     ).fillna(0)
+    option_df = option_df.dropna(subset=["Strike"])
+    option_df["Strike"] = option_df["Strike"].astype(int)
 
-#     option_df["PE LTP"] = pd.to_numeric(
-#         option_df["PE LTP"], errors="coerce"
-#     ).fillna(0)
+except Exception as e:
+    st.error(f"Table 3 data error: {e}")
+    st.stop()
 
-#     option_df = option_df.dropna(subset=["Strike"])
-#     option_df["Strike"] = option_df["Strike"].astype(int)
+# =========================
+# TABLE 3 - PAYOFF CALCULATOR
+# =========================
 
-# except Exception as e:
-#     st.error(f"Table 3 data error: {e}")
-#     st.stop()
-# # =========================
-# # TABLE 3 - PAYOFF CALCULATOR
-# # =========================
+st.subheader("Table 3 - Payoff Calculator")
 
-# st.subheader("Table 3 - Payoff Calculator")
+LOT_SIZE = 65
 
-# LOT_SIZE = 65
+def get_ltp_for_leg(df, strike, cepe):
+    row = df[df["Strike"] == strike]
+    if row.empty:
+        return 0.0
+    col = "CE LTP" if cepe == "CE" else "PE LTP"
+    return float(row.iloc[0][col])
 
-# def get_ltp_for_leg(df, strike, cepe):
-#     row = df[df["Strike"] == strike]
-#     if row.empty:
-#         return 0.0
-#     col = "CE LTP" if cepe == "CE" else "PE LTP"
-#     return float(row.iloc[0][col])
+# Read current spot
+try:
+    with open("nifty_spot_live.txt", "r") as f:
+        spot_now = float(f.read().strip())
+except:
+    if "Spot" in option_df.columns:
+        spot_now = float(option_df["Spot"].iloc[0])
+    else:
+        spot_now = float(option_df["Strike"].median())
 
-# # Read current spot
-# try:
-#     with open("nifty_spot_live.txt", "r") as f:
-#         spot_now = float(f.read().strip())
-# except:
-#     if "Spot" in option_df.columns:
-#         spot_now = float(option_df["Spot"].iloc[0])
-#     else:
-#         spot_now = float(option_df["Strike"].median())
+atm = round(spot_now / 50) * 50
 
-# atm = round(spot_now / 50) * 50
+st.write(f"Current Spot: **{spot_now:.2f}** | ATM: **{atm}**")
 
-# st.write(f"Current Spot: **{spot_now:.2f}** | ATM: **{atm}**")
+strike_list = sorted(option_df["Strike"].unique())
+near_strikes = [s for s in strike_list if atm - 500 <= s <= atm + 500]
 
-# strike_list = sorted(option_df["Strike"].unique())
-# near_strikes = [s for s in strike_list if atm - 500 <= s <= atm + 500]
+def strike_label(s, cepe, atm):
+    if s == atm:
+        return f"{s}  ATM"
+    if cepe == "CE":
+        return f"{s}  {'ITM' if s < atm else 'OTM'}"
+    else:
+        return f"{s}  {'ITM' if s > atm else 'OTM'}"
 
-# def strike_label(s, cepe, atm):
-#     if s == atm:
-#         return f"{s}  ATM"
-#     if cepe == "CE":
-#         return f"{s}  {'ITM' if s < atm else 'OTM'}"
-#     else:
-#         return f"{s}  {'ITM' if s > atm else 'OTM'}"
+num_legs = st.number_input(
+    "Number of Legs",
+    min_value=1,
+    max_value=4,
+    value=2,
+    step=1,
+)
 
-# num_legs = st.number_input(
-#     "Number of Legs",
-#     min_value=1,
-#     max_value=4,
-#     value=2,
-#     step=1,
-# )
+legs = []
 
-# legs = []
+for i in range(1, num_legs + 1):
+    st.markdown(f"### Leg {i}")
 
-# for i in range(1, num_legs + 1):
-#     st.markdown(f"### Leg {i}")
+    c1, c2, c3, c4, c5 = st.columns(5)
 
-#     c1, c2, c3, c4, c5 = st.columns(5)
+for i in range(1, num_legs + 1):
+    st.markdown(f"### Leg {i}")
 
-#     with c1:
-#         buy_sell = st.selectbox(
-#             "Buy/Sell",
-#             ["BUY", "SELL"],
-#             key=f"leg{i}_buy_sell",
-#         )
+    c1, c2, c3, c4, c5 = st.columns(5)
 
-#     with c2:
-#         cepe = st.selectbox(
-#             "CE/PE",
-#             ["CE", "PE"],
-#             key=f"leg{i}_cepe",
-#         )
-#     with c3:
-#             default_index = near_strikes.index(atm) if atm in near_strikes else len(near_strikes) // 2
+    with c1:
+        buy_sell = st.selectbox(
+            "Buy/Sell",
+            ["BUY", "SELL"],
+            key=f"leg{i}_buy_sell",
+        )
 
-#             strike = st.selectbox(
-#                 "Strike",
-#                 near_strikes,
-#                 index=default_index,
-#                 format_func=lambda s: strike_label(s, cepe, atm),
-#                 key=f"leg{i}_strike"
-#             )
+    with c2:
+        cepe = st.selectbox(
+            "CE/PE",
+            ["CE", "PE"],
+            key=f"leg{i}_cepe",
+        )
+    with c3:
+            default_index = near_strikes.index(atm) if atm in near_strikes else len(near_strikes) // 2
 
-#     with c4:
-#             lots = st.number_input(
-#                 "Lots",
-#                 min_value=1,
-#                 max_value=50,
-#                 value=1,
-#                 step=1,
-#                 key=f"leg{i}_lots"
-#             )
+            strike = st.selectbox(
+                "Strike",
+                near_strikes,
+                index=default_index,
+                format_func=lambda s: strike_label(s, cepe, atm),
+                key=f"leg{i}_strike"
+            )
 
-#     with c5:
+    with c4:
+            lots = st.number_input(
+                "Lots",
+                min_value=1,
+                max_value=50,
+                value=1,
+                step=1,
+                key=f"leg{i}_lots"
+            )
 
-#             auto_premium = get_ltp_for_leg(option_df, strike, cepe)
+    with c5:
 
-#             manual = st.checkbox(
-#                 "Manual",
-#                 value=False,
-#                 key=f"leg{i}_manual"
-#             )
+            auto_premium = get_ltp_for_leg(option_df, strike, cepe)
 
-#             if manual:
-#                 premium = st.number_input(
-#                     "Premium",
-#                     value=float(auto_premium),
-#                     step=0.05,
-#                     key=f"leg{i}_premium"
-#                 )
-#             else:
-#                 st.metric("Premium", f"₹{auto_premium:.2f}")
-#                 premium = auto_premium
+            manual = st.checkbox(
+                "Manual",
+                value=False,
+                key=f"leg{i}_manual"
+            )
 
-#     legs.append({
-#         "buy_sell": buy_sell,
-#         "cepe": cepe,
-#         "strike": strike,
-#         "lots": lots,
-#         "premium": premium
-#     })
+            if manual:
+                premium = st.number_input(
+                    "Premium",
+                    value=float(auto_premium),
+                    step=0.05,
+                    key=f"leg{i}_premium"
+                )
+            else:
+                st.metric("Premium", f"₹{auto_premium:.2f}")
+                premium = auto_premium
 
-# # =========================
-# # PAYOFF CALCULATION
-# # =========================
+    legs.append({
+        "buy_sell": buy_sell,
+        "cepe": cepe,
+        "strike": strike,
+        "lots": lots,
+        "premium": premium
+    })
 
-# price_range = list(range(int(atm - 1000), int(atm + 1000) + 50, 50))
-# payoff_rows = []
+# =========================
+# PAYOFF CALCULATION
+# =========================
 
-# for price in price_range:
-#     total_payoff = 0
+price_range = list(range(int(atm - 1000), int(atm + 1000) + 50, 50))
+payoff_rows = []
 
-#     for leg in legs:
-#         strike = leg["strike"]
-#         premium = leg["premium"]
-#         lots = leg["lots"]
-#         qty = lots * LOT_SIZE
+for price in price_range:
+    total_payoff = 0
 
-#         if leg["cepe"] == "CE":
-#             intrinsic = max(price - strike, 0)
-#         else:
-#             intrinsic = max(strike - price, 0)
+    for leg in legs:
+        strike = leg["strike"]
+        premium = leg["premium"]
+        lots = leg["lots"]
+        qty = lots * LOT_SIZE
 
-#         if leg["buy_sell"] == "BUY":
-#             leg_payoff = (intrinsic - premium) * qty
-#         else:
-#             leg_payoff = (premium - intrinsic) * qty
+        if leg["cepe"] == "CE":
+            intrinsic = max(price - strike, 0)
+        else:
+            intrinsic = max(strike - price, 0)
 
-#         total_payoff += leg_payoff
+        if leg["buy_sell"] == "BUY":
+            leg_payoff = (intrinsic - premium) * qty
+        else:
+            leg_payoff = (premium - intrinsic) * qty
 
-#     payoff_rows.append({
-#         "Spot": price,
-#         "Payoff": total_payoff
-#     })
+        total_payoff += leg_payoff
 
-# payoff_df = pd.DataFrame(payoff_rows)
+    payoff_rows.append({
+        "Spot": price,
+        "Payoff": total_payoff
+    })
 
-# # Live P/L near current spot
-# nearest_spot = min(price_range, key=lambda x: abs(x - spot_now))
-# live_pl = payoff_df[payoff_df["Spot"] == nearest_spot]["Payoff"].iloc[0]
+payoff_df = pd.DataFrame(payoff_rows)
 
-# max_profit = payoff_df["Payoff"].max()
-# max_loss = payoff_df["Payoff"].min()
+# Live P/L near current spot
+nearest_spot = min(price_range, key=lambda x: abs(x - spot_now))
+live_pl = payoff_df[payoff_df["Spot"] == nearest_spot]["Payoff"].iloc[0]
 
-# c1, c2, c3 = st.columns(3)
-# c1.metric("Live P/L near Spot", f"₹{live_pl:,.0f}")
-# c2.metric("Max Profit in Range", f"₹{max_profit:,.0f}")
-# c3.metric("Max Loss in Range", f"₹{max_loss:,.0f}")
+max_profit = payoff_df["Payoff"].max()
+max_loss = payoff_df["Payoff"].min()
 
-# st.markdown("### Payoff at Expiry")
+c1, c2, c3 = st.columns(3)
+c1.metric("Live P/L near Spot", f"₹{live_pl:,.0f}")
+c2.metric("Max Profit in Range", f"₹{max_profit:,.0f}")
+c3.metric("Max Loss in Range", f"₹{max_loss:,.0f}")
 
-# fig_payoff = px.line(
-#     payoff_df,
-#     x="Spot",
-#     y="Payoff",
-#     title="Payoff at Expiry"
-# )
+st.markdown("### Payoff at Expiry")
 
-# fig_payoff.add_vline(
-#     x=spot_now,
-#     line_dash="dash",
-#     annotation_text="Spot"
-# )
+fig_payoff = px.line(
+    payoff_df,
+    x="Spot",
+    y="Payoff",
+    title="Payoff at Expiry"
+)
 
-# fig_payoff.update_layout(
-#     height=450,
-#     xaxis_title="Spot",
-#     yaxis_title="Profit / Loss ₹"
-# )
+fig_payoff.add_vline(
+    x=spot_now,
+    line_dash="dash",
+    annotation_text="Spot"
+)
 
-# st.plotly_chart(fig_payoff, width="stretch")
+fig_payoff.update_layout(
+    height=450,
+    xaxis_title="Spot",
+    yaxis_title="Profit / Loss ₹"
+)
+
+st.plotly_chart(fig_payoff, width="stretch")
 
 

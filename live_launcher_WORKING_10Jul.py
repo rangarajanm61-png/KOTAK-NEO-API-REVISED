@@ -5,6 +5,7 @@ import subprocess
 import pandas as pd
 from datetime import datetime
 
+
 SPOT_FILE = "nifty_spot_live.txt"
 OPTION_FILE = "option_chain.csv"
 CLOSING_FILE = "option_chain_base_oi_closing.csv"
@@ -218,44 +219,36 @@ if not wait_for_option_chain():
 
 print("✅ STEP 6 COMPLETED : option_chain.csv updated")
 
-# print("\nSTEP 7 : START DASHBOARD")
-# print("Available ports : 8502  8503  8504")
-# print(">>> INPUT IS PORT NUMBER, NOT TOTP <<<")
+print("\nSTEP 7 : START DASHBOARD")
+print("Available ports : 8502  8503  8504")
+print(">>> INPUT IS PORT NUMBER, NOT TOTP <<<")
 
-# while True:
-#     port = input("Enter PORT No for dashboard [8502 / 8503 / 8504]: ").strip()
-#     if port in ["8502", "8503", "8504"]:
-#         break
-#     print("❌ Invalid port. Enter only 8502 or 8503 or 8504.")
+while True:
+    port = input("Enter PORT No for dashboard [8502 / 8503 / 8504]: ").strip()
+    if port in ["8502", "8503", "8504"]:
+        break
+    print("❌ Invalid port. Enter only 8502 or 8503 or 8504.")
 
-# dashboard_process = subprocess.Popen([
-#     "streamlit",
-#     "run",
-#     "dashboard2.py",
-#     "--server.port",
-#     port,
-#     "--server.address",
-#     "0.0.0.0"
-# ])
+dashboard_process = subprocess.Popen([
+    "streamlit",
+    "run",
+    "dashboard2.py",
+    "--server.port",
+    port,
+    "--server.address",
+    "0.0.0.0"
+])
 
-# print(f"✅ STEP 7 COMPLETED : Dashboard started on port {port}")
+print(f"✅ STEP 7 COMPLETED : Dashboard started on port {port}")
 
 print("\n" + "=" * 55)
-print("        SYSTEM READY FOR DASH BOARD OPENING")
+print("        SYSTEM READY FOR TRADING")
 print("=" * 55)
 print("✓ Login")
 print("✓ Spot Live")
 print("✓ Option Chain Live")
-# print(f"✓ Dashboard Started on port {port}")
+print(f"✓ Dashboard Started on port {port}")
 print(f"✓ Time: {datetime.now().strftime('%H:%M:%S')}")
 print("=" * 55)
 
-# dashboard_process.wait()
-print("\nLauncher will remain active.")
-print("Press Ctrl+C to stop all live processes.")
-
-try:
-    while True:
-        time.sleep(60)
-except KeyboardInterrupt:
-    print("\nLive launcher stopped.")
+dashboard_process.wait()

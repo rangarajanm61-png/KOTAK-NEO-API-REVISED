@@ -242,8 +242,8 @@ while True:
             })
         else:
             pass
-    # print("DEBUG final ltp_df columns:", ltp_df.columns.tolist())
-    # print(ltp_df.head(3).to_string())
+    print("DEBUG final ltp_df columns:", ltp_df.columns.tolist())
+    print(ltp_df.head(3).to_string())
 
     fetch_end = time.time()
     print(f"OPTION QUOTE FETCH TIME = {fetch_end - cycle_start:.2f} sec")
@@ -695,34 +695,34 @@ while True:
                 
         option_chain = option_chain.loc[:, ~option_chain.columns.duplicated()].copy()
 
-    if "Trading_Bias" in option_chain.columns:
-        option_chain = option_chain.drop(columns=["Trading_Bias"])
+    # if "Trading_Bias" in option_chain.columns:
+    #     option_chain = option_chain.drop(columns=["Trading_Bias"])
     
-        option_chain["Trading_Bias"] = "Neutral" 
+    #     option_chain["Trading_Bias"] = "Neutral" 
 
-    option_chain["Trading_Bias"] = option_chain.apply(
-        trading_bias,
-        axis=1
-    )
-    print("\nTOP 3 CE SELL CANDIDATES")
-    print(
-        option_chain[
-            option_chain["Trading_Bias"].str.contains("CE Sell", na=False)
-        ][["Strike", "CE_TimeValue", "Trading_Bias"]]
-        # .sort_values("CE_TimeValue", ascending=False)
-        .head(3)
-        .to_string(index=False)
-    )
+    # option_chain["Trading_Bias"] = option_chain.apply(
+    #     trading_bias,
+    #     axis=1
+    # )
+    # print("\nTOP 3 CE SELL CANDIDATES")
+    # print(
+    #     option_chain[
+    #         option_chain["Trading_Bias"].str.contains("CE Sell", na=False)
+    #     ][["Strike", "CE_TimeValue", "Trading_Bias"]]
+    #     # .sort_values("CE_TimeValue", ascending=False)
+    #     .head(3)
+    #     .to_string(index=False)
+    # )
 
-    print("\nTOP 3 PE SELL CANDIDATES")
-    print(
-        option_chain[
-            option_chain["Trading_Bias"].str.contains("PE Sell", na=False)
-        ][["Strike", "PE_TimeValue", "Trading_Bias"]]
-        # .sort_values("PE_TimeValue", ascending=False)
-        .head(3)
-        .to_string(index=False)
-    )
+    # print("\nTOP 3 PE SELL CANDIDATES")
+    # print(
+    #     option_chain[
+    #         option_chain["Trading_Bias"].str.contains("PE Sell", na=False)
+    #     ][["Strike", "PE_TimeValue", "Trading_Bias"]]
+    #     # .sort_values("PE_TimeValue", ascending=False)
+    #     .head(3)
+    #     .to_string(index=False)
+    # )
     # ================= MAIN OUTPUT TABLES =================
 
     # ---- Table 1: Price / OI / PCR ----
@@ -777,8 +777,8 @@ while True:
             print("Decay Basis: Estimated premium erosion from current time based on the project decay logic, assuming Spot and IV remain unchanged.")
             print("Current code recalculates decay every refresh; after-market broker-style theta freeze is not yet implemented.\n")
 
-            print("\nTABLE 3 - OPTION CHAIN WITH TRADING BIAS")
-            print(option_chain[table3_cols].to_string(index=False))
+            # print("\nTABLE 3 - OPTION CHAIN WITH TRADING BIAS")
+            # print(option_chain[table3_cols].to_string(index=False))
 
             table_printed = True
 
