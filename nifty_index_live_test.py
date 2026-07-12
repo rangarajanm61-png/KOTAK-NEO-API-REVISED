@@ -38,7 +38,7 @@ print("2FA response:", validate_response)
 print("LOGIN SUCCESSFUL")
 
 def on_message(message):
-    print("RAW INDEX TICK =", message)
+    # print("RAW INDEX TICK =", message)
 
     try:
         data = message.get("data", [])
