@@ -18,7 +18,7 @@ st.markdown("""
 
 /* Extra compact payoff rows */
 div[data-testid="stHorizontalBlock"] {
-    gap: 0.35rem !important;
+    gap: 0.20rem !important;
 }
 
 div[data-testid="stSelectbox"] {
@@ -70,7 +70,7 @@ st.markdown("""
 # /* Reduce page margins */
 
 .block-container {
-    padding-top: 0.15rem !important;
+    padding-top: 0rem !important;
     padding-bottom: 0.5rem !important;
     padding-left: 1rem !important;
     padding-right: 1rem !important;
@@ -617,26 +617,48 @@ except:
 
 atm = round(spot_now / 50) * 50
 
-st.markdown(
-    "<h2 style='margin-top:0px; margin-bottom:4px; padding-top:0px;'>Table 3 - Payoff Calculator</h2>",
-    unsafe_allow_html=True,
-)
-from datetime import datetime
-
 now = datetime.now(IST)
 
-st.markdown(
-    f"<div style='margin-top:0px;margin-bottom:4px;font-size:13px;'>Last Refresh : {now.strftime('%d-%b %H:%M:%S IST')}</div>",
-    unsafe_allow_html=True,
-)
+title_col, time_col = st.columns([3, 2])
+
+with title_col:
+    st.markdown(
+        "<h2 style='margin:0; padding:0;'>"
+        "Table 3 - Payoff Calculator"
+        "</h2>",
+        unsafe_allow_html=True
+    )
+
+with time_col:
+    st.markdown(
+        f"""
+        <div style="
+            text-align:right;
+            padding-top:8px;
+            font-size:13px;
+            white-space:nowrap;
+        ">
+            Last Refresh : {now.strftime('%d-%b %H:%M:%S IST')}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 spot_col, atm_col, refresh_col = st.columns([2, 1, 1])
 
 with spot_col:
-    st.metric("Current Spot", f"{spot_now:.2f}")
+    st.markdown("**Current Spot**")
+    st.markdown(
+        f"<div style='font-size:18px;font-weight:700'>{spot_now:.2f}</div>",
+        unsafe_allow_html=True
+    )
 
 with atm_col:
-    st.metric("ATM", f"{atm}")
-
+    st.markdown("**ATM**")
+    st.markdown(
+        f"<div style='font-size:18px;font-weight:700'>{atm}</div>",
+        unsafe_allow_html=True
+    )
+    
 with refresh_col:
     st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
     if st.button("Refresh LTP", key="refresh_payoff_data"):
@@ -652,24 +674,132 @@ def strike_label(s, cepe, atm):
         return f"{s}  {'ITM' if s < atm else 'OTM'}"
     else:
         return f"{s}  {'ITM' if s > atm else 'OTM'}"
+# =========================================================
+# STRATEGY LIBRARY
+# =========================================================
 
-legs_col, blank_col = st.columns([1, 5])
+strategy_options = [
+    "Custom",
+    "Long Call",
+    "Long Put",
+    "Bull Call Spread",
+    "Bear Put Spread",
+    "Bull Put Spread",
+    "Bear Call Spread",
+    "Long Straddle",
+    "Short Straddle",
+    "Long Strangle",
+    "Short Strangle",
+    "Iron Condor",
+    "Iron Fly"
+]
 
-with legs_col:
-    num_legs = st.number_input(
-        "Number of Legs",
-        min_value=1,
-        max_value=4,
-        value=2,
-        step=1,
-        key="number_of_legs"
+strategy_name = st.selectbox(
+    "Select Strategy",
+    strategy_options,
+    index=0,
+    key="strategy_name"
+)
+
+strategy_map = {
+    "Custom": [],
+
+    "Long Call": [
+        {"buy_sell": "BUY", "cepe": "CE", "offset": 0, "lots": 1}
+    ],
+
+    "Long Put": [
+        {"buy_sell": "BUY", "cepe": "PE", "offset": 0, "lots": 1}
+    ],
+
+    "Bull Call Spread": [
+        {"buy_sell": "BUY",  "cepe": "CE", "offset": 0,   "lots": 1},
+        {"buy_sell": "SELL", "cepe": "CE", "offset": 100, "lots": 1}
+    ],
+
+    "Bear Put Spread": [
+        {"buy_sell": "BUY",  "cepe": "PE", "offset": 0,    "lots": 1},
+        {"buy_sell": "SELL", "cepe": "PE", "offset": -100, "lots": 1}
+    ],
+
+    "Bull Put Spread": [
+        {"buy_sell": "SELL", "cepe": "PE", "offset": 0,    "lots": 1},
+        {"buy_sell": "BUY",  "cepe": "PE", "offset": -100, "lots": 1}
+    ],
+
+    "Bear Call Spread": [
+        {"buy_sell": "SELL", "cepe": "CE", "offset": 0,   "lots": 1},
+        {"buy_sell": "BUY",  "cepe": "CE", "offset": 100, "lots": 1}
+    ],
+
+    "Long Straddle": [
+        {"buy_sell": "BUY", "cepe": "CE", "offset": 0, "lots": 1},
+        {"buy_sell": "BUY", "cepe": "PE", "offset": 0, "lots": 1}
+    ],
+
+    "Short Straddle": [
+        {"buy_sell": "SELL", "cepe": "CE", "offset": 0, "lots": 1},
+        {"buy_sell": "SELL", "cepe": "PE", "offset": 0, "lots": 1}
+    ],
+
+    "Long Strangle": [
+        {"buy_sell": "BUY", "cepe": "CE", "offset": 100,  "lots": 1},
+        {"buy_sell": "BUY", "cepe": "PE", "offset": -100, "lots": 1}
+    ],
+
+    "Short Strangle": [
+        {"buy_sell": "SELL", "cepe": "CE", "offset": 100,  "lots": 1},
+        {"buy_sell": "SELL", "cepe": "PE", "offset": -100, "lots": 1}
+    ],
+
+    "Iron Condor": [
+        {"buy_sell": "BUY",  "cepe": "PE", "offset": -200, "lots": 1},
+        {"buy_sell": "SELL", "cepe": "PE", "offset": -100, "lots": 1},
+        {"buy_sell": "SELL", "cepe": "CE", "offset": 100,  "lots": 1},
+        {"buy_sell": "BUY",  "cepe": "CE", "offset": 200,  "lots": 1}
+    ],
+
+    "Iron Fly": [
+        {"buy_sell": "BUY",  "cepe": "PE", "offset": -100, "lots": 1},
+        {"buy_sell": "SELL", "cepe": "PE", "offset": 0,    "lots": 1},
+        {"buy_sell": "SELL", "cepe": "CE", "offset": 0,    "lots": 1},
+        {"buy_sell": "BUY",  "cepe": "CE", "offset": 100,  "lots": 1}
+    ]
+}
+
+selected_template = strategy_map[strategy_name]
+
+label_col, input_col, blank_col = st.columns([1.2, 1.0, 4.8])
+
+with label_col:
+    st.markdown(
+        "<div style='padding-top:8px;font-weight:600;'>Number of Legs</div>",
+        unsafe_allow_html=True
     )
+
+with input_col:
+    if strategy_name == "Custom":
+        num_legs = st.number_input(
+            "Number of Legs",
+            min_value=1,
+            max_value=4,
+            value=2,
+            step=1,
+            key="number_of_legs"
+        )
+    else:
+        num_legs = len(selected_template)
+        st.markdown(f"**Number of Legs:** {num_legs}")
 
 legs = []
 
-# Compact column headings
-h1, h2, h3, h4, h5, h6, h7 = st.columns(
-    [0.28, 1.00, 0.75, 1.35, 0.62, 0.55, 0.72]
+# =========================================================
+# COMPLETE LEG DETAILS
+# Leg | Buy/Sell | CE/PE | Strike | Lots | Manual | Entry | LTP | MTM
+# =========================================================
+
+h1, h2, h3, h4, h5, h6, h7, h8, h9 = st.columns(
+    [0.25, 0.82, 0.60, 1.20, 0.50, 0.48, 0.68, 0.58, 0.70]
 )
 
 h1.markdown("**Leg**")
@@ -678,42 +808,88 @@ h3.markdown("**CE/PE**")
 h4.markdown("**Strike**")
 h5.markdown("**Lots**")
 h6.markdown("**Manual**")
-h7.markdown("**Premium**")
+h7.markdown("**Entry**")
+h8.markdown("**LTP**")
+h9.markdown("**MTM**")
+
 
 for i in range(1, num_legs + 1):
 
-    c0, c1, c2, c3, c4, c5, c6 = st.columns(
-        [0.28, 1.00, 0.75, 1.35, 0.62, 0.55, 0.72]
+    template_leg = (
+        selected_template[i - 1]
+        if strategy_name != "Custom"
+        else None
+    )
+    c0, c1, c2, c3, c4, c5, c6, c7, c8 = st.columns(
+        [0.25, 0.82, 0.60, 1.20, 0.50, 0.48, 0.68, 0.58, 0.70]
     )
 
+    # Leg number
     with c0:
         st.markdown(
-            f"<div style='padding-top:8px;font-size:15px;font-weight:700;'>{i}</div>",
+            f"""
+            <div style="
+                padding-top:8px;
+                font-size:15px;
+                font-weight:700;
+            ">
+                {i}
+            </div>
+            """,
             unsafe_allow_html=True
         )
 
+    # Buy / Sell
     with c1:
+        buy_sell_options = ["BUY", "SELL"]
+
+        buy_sell_index = 0
+        if template_leg:
+            buy_sell_index = buy_sell_options.index(template_leg["buy_sell"])
+
         buy_sell = st.selectbox(
             "Buy/Sell",
-            ["BUY", "SELL"],
+            buy_sell_options,
+            index=buy_sell_index,
             key=f"leg{i}_buy_sell",
             label_visibility="collapsed"
         )
 
+    # CE / PE
     with c2:
+        cepe_options = ["CE", "PE"]
+
+        cepe_index = 0
+        if template_leg:
+            cepe_index = cepe_options.index(template_leg["cepe"])
+
         cepe = st.selectbox(
             "CE/PE",
-            ["CE", "PE"],
+            cepe_options,
+            index=cepe_index,
             key=f"leg{i}_cepe",
             label_visibility="collapsed"
         )
 
+    # Strike
     with c3:
-        default_index = (
-            near_strikes.index(atm)
-            if atm in near_strikes
-            else len(near_strikes) // 2
-        )
+        if template_leg:
+            preferred_strike = atm + template_leg["offset"]
+
+            if preferred_strike in near_strikes:
+                default_index = near_strikes.index(preferred_strike)
+            else:
+                default_index = (
+                    near_strikes.index(atm)
+                    if atm in near_strikes
+                    else len(near_strikes) // 2
+                )
+        else:
+            default_index = (
+                near_strikes.index(atm)
+                if atm in near_strikes
+                else len(near_strikes) // 2
+            )
 
         strike = st.selectbox(
             "Strike",
@@ -724,19 +900,26 @@ for i in range(1, num_legs + 1):
             label_visibility="collapsed"
         )
 
+    # Lots
     with c4:
+        default_lots = template_leg["lots"] if template_leg else 1
+
         lots = st.number_input(
             "Lots",
             min_value=1,
             max_value=50,
-            value=1,
+            value=default_lots,
             step=1,
             key=f"leg{i}_lots",
             label_visibility="collapsed"
         )
 
-    auto_premium = get_ltp_for_leg(option_df, strike, cepe)
+    # Obtain current live LTP
+    auto_premium = float(
+        get_ltp_for_leg(option_df, strike, cepe)
+    )
 
+    # Manual entry selection
     with c5:
         manual = st.checkbox(
             "Manual",
@@ -745,39 +928,88 @@ for i in range(1, num_legs + 1):
             label_visibility="collapsed"
         )
 
+    # Entry premium
     with c6:
         if manual:
-            premium = st.number_input(
-                "Premium",
+            entry_price = st.number_input(
+                "Entry",
                 min_value=0.0,
                 value=float(auto_premium),
                 step=0.05,
-                key=f"leg{i}_premium",
+                format="%.2f",
+                key=f"leg{i}_entry",
                 label_visibility="collapsed"
             )
         else:
-            premium = auto_premium
+            entry_price = auto_premium
 
             st.markdown(
                 f"""
                 <div style="
-                    padding-top:7px;
-                    font-size:15px;
+                    padding-top:8px;
+                    font-size:14px;
                     font-weight:700;
                     white-space:nowrap;
                 ">
-                    ₹{auto_premium:.2f}
+                    ₹{entry_price:.2f}
                 </div>
                 """,
                 unsafe_allow_html=True
             )
 
+    # MTM calculation
+    quantity = lots * LOT_SIZE
+
+    if buy_sell == "BUY":
+        mtm = (auto_premium - entry_price) * quantity
+    else:
+        mtm = (entry_price - auto_premium) * quantity
+
+    # Live LTP display
+    with c7:
+        st.markdown(
+            f"""
+            <div style="
+                padding-top:8px;
+                font-size:14px;
+                font-weight:700;
+                white-space:nowrap;
+            ">
+                ₹{auto_premium:.2f}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    # MTM display
+    with c8:
+        st.markdown(
+            f"""
+            <div style="
+                padding-top:8px;
+                font-size:14px;
+                font-weight:700;
+                white-space:nowrap;
+            ">
+                ₹{mtm:,.0f}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    # Store each leg for payoff calculation
     legs.append({
         "buy_sell": buy_sell,
         "cepe": cepe,
         "strike": strike,
         "lots": lots,
-        "premium": premium
+        "manual": manual,
+        "entry": entry_price,
+        "ltp": auto_premium,
+        "mtm": mtm,
+
+        # Existing payoff calculation uses premium
+        "premium": entry_price
     })
 
 # =========================
@@ -827,6 +1059,10 @@ c1.metric("Live P/L near Spot", f"₹{live_pl:,.0f}")
 c2.metric("Max Profit in Range", f"₹{max_profit:,.0f}")
 c3.metric("Max Loss in Range", f"₹{max_loss:,.0f}")
 
+st.markdown(
+    "<div style='height:2px'></div>",
+    unsafe_allow_html=True
+)
 st.markdown("### Payoff at Expiry")
 
 fig_payoff = px.line(
