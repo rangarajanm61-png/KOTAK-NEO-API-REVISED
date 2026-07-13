@@ -42,14 +42,54 @@ print("\n================================")
 print("LOGIN SUCCESSFUL")
 print("--------------------------------\n")
 
-quote = client.quotes(
+# Remove the client.quotes(...) block completely.
+
+def on_message(message):
+    try:
+        data = message.get("data", [])
+        if data:
+            tick = data[0]
+
+            spot = (
+                tick.get("ltp")
+                or tick.get("last_price")
+                or tick.get("ltpPrice")
+            )
+
+            if spot is not None:
+                spot = float(spot)
+
+                with open("nifty_spot_live.txt", "w") as f:
+                    f.write(str(spot))
+
+                print("NIFTY SPOT SAVED =", spot)
+
+    except Exception as e:
+        print("SPOT SAVE ERROR =", e)
+
+
+def on_error(error):
+    print("INDEX ERROR =", error)
+
+
+def on_open(message):
+    print("INDEX WEBSOCKET OPENED =", message)
+
+
+client.on_message = on_message
+client.on_error = on_error
+client.on_open = on_open
+
+client.subscribe(
     instrument_tokens=[{
-        "exchange_segment": "nse_cm",
-        "instrument_token": "NIFTY"
+        "instrument_token": "26000",
+        "exchange_segment": "nse_cm"
     }],
-    quote_type="ltp"
+    isIndex=False,
+    isDepth=False
 )
 
-print(quote)
+print("Subscribed NIFTY index. Waiting for live ticks...")
+
 
 

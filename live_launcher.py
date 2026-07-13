@@ -79,7 +79,7 @@ def restart_spot_reader():
         pass
 
     print("Restarting spot reader...")
-    spot_process = subprocess.Popen(["python3", "nifty_index_live_test.py"])
+    spot_process = subprocess.Popen(["python3", "nifty_index_live.py"])
 
 
 def restart_main():
@@ -199,7 +199,7 @@ live_process = subprocess.Popen(["python3", "live_feed.py"])
 print("✅ STEP 4 COMPLETED : live_feed.py started")
 
 print("\nSTEP 5 : START NIFTY SPOT")
-spot_process = subprocess.Popen(["python3", "nifty_index_live_test.py"])
+spot_process = subprocess.Popen(["python3", "nifty_index_live.py"])
 
 if not wait_for_spot():
     print("❌ STEP 5 FAILED : NIFTY spot not received")
