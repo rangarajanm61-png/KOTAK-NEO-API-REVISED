@@ -44,91 +44,36 @@ with open("live_ltp.csv", "w") as f:
 with open("tokens.txt", "r") as f:
     token_lines = [line.strip() for line in f if line.strip()]
 
-tokens = [
-    {"instrument_token": t}
-    for t in token_lines
-]
+# tokens = [
+#     {"instrument_token": t}
+#     for t in token_lines
+# ]
 
 def on_message(message):
-    
     try:
         data = message.get("data", [])
 
         for tick in data:
-                
-                token = str(tick.get("tk")).strip()
+            token = str(tick.get("tk", "")).strip()
 
-                ltp = (
-                    tick.get("ltp")
-                    or tick.get("last_price")
-                    or tick.get("last_traded_price")
-                    or 0
-                )
-                if token == "26000" and ltp:
-                    with open("nifty_spot_live.txt", "w") as f:
-                        f.write(str(ltp))
-                    print(f"NIFTY SPOT = {ltp}")
-                    continue
-                if ltp:
-                    with open("live_ltp.csv", "a") as f:
-                        f.write(f"{datetime.now()},{token},{ltp}\n")
+            ltp = (
+                tick.get("ltp")
+                or tick.get("last_price")
+                or tick.get("last_traded_price")
+                or 0
+            )
 
-                volume = (
-                    tick.get("v")
-                    or tick.get("vol")
-                    or tick.get("volume")
-                    or tick.get("Volume")
-                    
-                    or 0
-                )
-                oi = (
-                    tick.get("oi")
-                    or tick.get("open_int")
-                    or tick.get("openInterest")
-                    or 0
-                )
+            if token == "26000" and ltp:
+                with open("nifty_spot_live.txt", "w") as f:
+                    f.write(str(ltp))
 
-                symbol = str(tick.get("ts", ""))
-                if not symbol:
-                    symbol = str(tick.get("tk", ""))
+                print(f"NIFTY SPOT = {ltp}")
+                return
 
-                
-                with open("live_ltp.csv", "a") as f:
-
-                    f.write(
-                        f"{datetime.now().strftime('%H:%M:%S')},"
-                        f"{symbol},{token},{ltp},{volume},{oi}\n"
-                    )
-
-        import pandas as pd
-        df_check = pd.read_csv("live_ltp.csv")
-        print("Rows =", len(df_check))
-        print(f"{symbol} | TOKEN={token} | LTP={ltp} | VOL={volume} | OI={oi}")
-        try:
-                df = pd.read_csv("option_chain.csv")
-
-                if "CE Token" in df.columns:
-                    df.loc[df["CE Token"].astype(str) == str(token), "CE_LTP"] = ltp
-
-                    df.loc[df["CE Token"].astype(str) == str(token), "CE OI"] = oi
-
-                if "PE Token" in df.columns:
-                    df.loc[df["PE Token"].astype(str) == str(token), "PE_LTP"] = ltp
-
-                    df.loc[df["PE Token"].astype(str) == str(token), "PE OI"] = oi
-
-                df.to_csv("option_chain.csv", index=False)
-
-        except Exception as e:
-                print("CSV update error:", e)
     except Exception as e:
-        print("LIVE DATA:", message)
-        print("PARSE ERROR:", e)
+        print("SPOT PARSE ERROR:", e)
 
-        def on_error(error):
-                print("ERROR:", error)
-
-    
+            
 def on_error(error):
     print("ERROR:", error)
 
@@ -144,8 +89,8 @@ client.on_error = on_error
 client.on_close = on_close
 client.on_open = on_open
 
-with open("tokens.txt", "r") as f:
-    token_lines = [line.strip() for line in f if line.strip()]
+# with open("tokens.txt", "r") as f:
+#     token_lines = [line.strip() for line in f if line.strip()]
 
 tokens = [
     {
@@ -154,13 +99,13 @@ tokens = [
     }
 ]
 
-tokens += [
-    {
-        "instrument_token": t,
-        "exchange_segment": "nse_fo"
-    }
-    for t in token_lines
-]
+# tokens += [
+#     {
+#         "instrument_token": t,
+#         "exchange_segment": "nse_fo"
+#     }
+#     for t in token_lines
+# ]
 
 print("Total Tokens =", len(tokens))
 
@@ -173,18 +118,18 @@ client.subscribe(
     isDepth=False,
 )
 
-client.subscribe(
-    instrument_tokens=[
-        {
-            "instrument_token": t,
-            "exchange_segment": "nse_fo"
-        }
-        for t in token_lines
-    ],
-    isIndex=False,
-    isDepth=False,
-)
-print("Subscribed. Waiting for live ticks...")
+# client.subscribe(
+#     instrument_tokens=[
+#         {
+#             "instrument_token": t,
+#             "exchange_segment": "nse_fo"
+#         }
+#         for t in token_lines
+#     ],
+#     isIndex=False,
+#     isDepth=False,
+# )
+print("Subscribed. Waiting for NIFTY spot ticks...")
 
 while True:
     time.sleep(1)

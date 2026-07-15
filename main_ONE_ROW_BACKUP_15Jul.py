@@ -242,8 +242,8 @@ while True:
             })
         else:
             pass
-    print("DEBUG final ltp_df columns:", ltp_df.columns.tolist())
-    print(ltp_df.head(3).to_string())
+    # print("DEBUG final ltp_df columns:", ltp_df.columns.tolist())
+    # print(ltp_df.head(3).to_string())
 
     fetch_end = time.time()
     print(f"OPTION QUOTE FETCH TIME = {fetch_end - cycle_start:.2f} sec")
@@ -253,8 +253,6 @@ while True:
 
     final_ltp_df = final_ltp_df.sort_values(["Strike", "Type", "LTP"], ascending=[True, True, False])
     final_ltp_df = final_ltp_df.drop_duplicates(subset=["Strike", "Type"], keep="last")
-    print("\nFINAL LTP ROW COUNT =", len(final_ltp_df))
-    print(final_ltp_df[["Strike", "Type", "LTP"]].to_string(index=False))
 
     
     # Convert into option-chain format
@@ -266,11 +264,20 @@ while True:
     pe_df = pe_df[["Strike", "LTP", "OI", "Volume", "PriceChange", "PricePctChange", "IV"]]
     pe_df.columns = ["Strike", "PE_LTP", "PE OI", "PE Volume", "PE Price Change", "PE Price % Change", "PE_IV"]
 
+    print("CE ROWS =", len(ce_df))
+    print("CE STRIKES =", ce_df["Strike"].tolist())
+
+    print("PE ROWS =", len(pe_df))
+    print("PE STRIKES =", pe_df["Strike"].tolist())
+
     option_chain = pd.merge(
         ce_df,
         pe_df,
         on="Strike"
     )
+
+    print("MERGED ROWS =", len(option_chain))
+    print("MERGED STRIKES =", option_chain["Strike"].tolist())
    
     T = get_time_to_expiry(selected_expiry)
 
@@ -602,129 +609,26 @@ while True:
     except Exception as e:
         print("Could not read latest spot:", e)
 
+    data_time = datetime.now().strftime("%H:%M:%S")
+
+    option_chain["Data Time"] = data_time
     option_chain.to_csv("option_chain.csv", index=False)
 
     summary_df = expiry_summary(option_chain)
+    summary_df["Data Time"] = data_time
     summary_df.to_csv("summary.csv", index=False)
+
     print("summary.csv updated")
-    
 
-    # ATM CE / PE token extraction for live_feed.py
-    atm_ce = option_df[
-        (option_df["Strike"] == atm_strike) &
-        (option_df["pOptionType"] == "CE") &
-        (option_df["pExpiryDate"] == selected_expiry)
-    ]
-
-    atm_pe = option_df[
-        (option_df["Strike"] == atm_strike) &
-        (option_df["pOptionType"] == "PE") &
-        (option_df["pExpiryDate"] == selected_expiry)
-    ]
-
-    ce_token = str(atm_ce.iloc[0]["pSymbol"])
-    pe_token = str(atm_pe.iloc[0]["pSymbol"])
-
-    with open("tokens.txt", "w") as f:
-        f.write(f"{ce_token}\n")
-        f.write(f"{pe_token}\n")
-        f.write(f"{atm_strike}\n") 
-        f.write(f"{atm_strike}\n")
-
-    option_chain["CE_LTP"] = pd.to_numeric(
-        option_chain["CE_LTP"],
-        errors="coerce"
-    )
-
-    option_chain["PE_LTP"] = pd.to_numeric(
-        option_chain["PE_LTP"],
-        errors="coerce"
-    )
-    # Step 5: Intrinsic Value & Time Value
-
-    # Correct intrinsic values
-
-    option_chain["CE_Intrinsic"] = option_chain["Strike"].apply(
-        lambda x: max(spot - x, 0)
-    )
-
-    option_chain["PE_Intrinsic"] = option_chain["Strike"].apply(
-        lambda x: max(x - spot, 0)
-    )
-
-    # Time value (never negative)
-
-    option_chain["CE_TimeValue"] = (
-        option_chain["CE_LTP"] -
-        option_chain["CE_Intrinsic"]
-    ).clip(lower=0).round(2)
-
-    option_chain["PE_TimeValue"] = (
-        option_chain["PE_LTP"] -
-        option_chain["PE_Intrinsic"]
-    ).clip(lower=0).round(2)
-
-    def trading_bias(row):
-
-        # ATM
-        if row["Status"] == "ATM":
-            return "ATM High Theta"
-
-        # CE side
-        if "ITM CE" in row["Status"]:
-
-            if row["CE_TimeValue"] > 150:
-                return "CE Sell Strong"
-
-            elif row["CE_TimeValue"] > 75:
-                return "CE Sell"
-
-            else:
-                return "CE Buy"
-
-        # PE side
-        if "ITM PE" in row["Status"]:
-
-            if row["PE_TimeValue"] > 150:
-                return "PE Sell Strong"
-
-            elif row["PE_TimeValue"] > 75:
-                return "PE Sell"
-
-            else:
-                return "PE Buy"
-
-                
-        option_chain = option_chain.loc[:, ~option_chain.columns.duplicated()].copy()
-
-    # if "Trading_Bias" in option_chain.columns:
-    #     option_chain = option_chain.drop(columns=["Trading_Bias"])
-    
-    #     option_chain["Trading_Bias"] = "Neutral" 
-
-    # option_chain["Trading_Bias"] = option_chain.apply(
-    #     trading_bias,
-    #     axis=1
-    # )
-    # print("\nTOP 3 CE SELL CANDIDATES")
     # print(
     #     option_chain[
-    #         option_chain["Trading_Bias"].str.contains("CE Sell", na=False)
-    #     ][["Strike", "CE_TimeValue", "Trading_Bias"]]
-    #     # .sort_values("CE_TimeValue", ascending=False)
+    #         ["Strike", "PE_TimeValue", "Trading_Bias"]
+    #     ]
+    #     .sort_values("PE_TimeValue", ascending=False)
     #     .head(3)
     #     .to_string(index=False)
     # )
-
-    # print("\nTOP 3 PE SELL CANDIDATES")
-    # print(
-    #     option_chain[
-    #         option_chain["Trading_Bias"].str.contains("PE Sell", na=False)
-    #     ][["Strike", "PE_TimeValue", "Trading_Bias"]]
-    #     # .sort_values("PE_TimeValue", ascending=False)
-    #     .head(3)
-    #     .to_string(index=False)
-    # )
+    
     # ================= MAIN OUTPUT TABLES =================
 
     # ---- Table 1: Price / OI / PCR ----
@@ -779,8 +683,8 @@ while True:
             print("Decay Basis: Estimated premium erosion from current time based on the project decay logic, assuming Spot and IV remain unchanged.")
             print("Current code recalculates decay every refresh; after-market broker-style theta freeze is not yet implemented.\n")
 
-            # print("\nTABLE 3 - OPTION CHAIN WITH TRADING BIAS")
-            # print(option_chain[table3_cols].to_string(index=False))
+            print("\nTABLE 3 - OPTION CHAIN WITH TRADING BIAS")
+            print(option_chain[table3_cols].to_string(index=False))
 
             table_printed = True
 
@@ -789,6 +693,7 @@ while True:
 
         # Save latest data every refresh
 
+        option_chain["Data Time"] = datetime.now().strftime("%H:%M:%S")
         option_chain.to_csv("option_chain.csv", index=False)
 
         # ================= END MAIN OUTPUT TABLES =================
