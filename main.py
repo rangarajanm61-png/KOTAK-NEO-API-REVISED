@@ -129,28 +129,51 @@ option_df = option_df[option_df["pInstName"] == "OPTIDX"]
 
 expiry_list = sorted(option_df["pExpiryDate"].dropna().unique())
 
-if not os.path.exists("selected_expiry_runtime.txt"):
+EXPIRY_FILE = "selected_expiry.txt"
 
-    print("\nAVAILABLE EXPIRIES")
-    for i, e in enumerate(expiry_list, start=1):
-        print(f"{i}. {e}")
+use_launcher = input(
+    "Use expiry selected in live launcher? (Y/N): "
+).strip().lower()
 
-    if os.path.exists("selected_expiry.txt") and os.environ.get("LAUNCHER_MODE") == "1":
-        with open("selected_expiry.txt", "r") as f:
-            expiry_choice = int(f.read().strip())
-        print(f"Using Launcher Expiry : {expiry_choice}")
+if use_launcher == "y":
+    if not os.path.exists(EXPIRY_FILE):
+        print("selected_expiry.txt not found. Select expiry manually.")
+        use_launcher = "n"
     else:
-        expiry_choice = int(input("Select Expiry (1,2,3...): "))
+        with open(EXPIRY_FILE, "r") as f:
+            selected_expiry = f.read().strip()
 
-    with open("selected_expiry_runtime.txt", "w") as f:
-        f.write(str(expiry_choice))
+        if selected_expiry not in expiry_list:
+            print(
+                f"Launcher expiry {selected_expiry} is not available "
+                "in the current Neo expiry list."
+            )
+            use_launcher = "n"
+        else:
+            print("Using Launcher Expiry =", selected_expiry)
 
-else:
-    with open("selected_expiry_runtime.txt", "r") as f:
-        expiry_choice = int(f.read().strip())
-    print("Using same Expiry =", expiry_choice)
+if use_launcher != "y":
+    print("\nAVAILABLE EXPIRIES")
 
-selected_expiry = expiry_list[expiry_choice - 1]
+    for i, expiry_date in enumerate(expiry_list, start=1):
+        print(f"{i}. {expiry_date}")
+
+    while True:
+        expiry_input = input("Select Expiry Number: ").strip()
+
+        if not expiry_input.isdigit():
+            print("Enter a valid number.")
+            continue
+
+        expiry_index = int(expiry_input) - 1
+
+        if 0 <= expiry_index < len(expiry_list):
+            selected_expiry = expiry_list[expiry_index]
+            break
+
+        print(f"Enter a number from 1 to {len(expiry_list)}.")
+
+    print("Manually Selected Expiry =", selected_expiry)
 
 print("Selected Expiry =", selected_expiry)
 
@@ -264,11 +287,20 @@ while True:
     pe_df = pe_df[["Strike", "LTP", "OI", "Volume", "PriceChange", "PricePctChange", "IV"]]
     pe_df.columns = ["Strike", "PE_LTP", "PE OI", "PE Volume", "PE Price Change", "PE Price % Change", "PE_IV"]
 
+    # print("CE ROWS =", len(ce_df))
+    # print("CE STRIKES =", ce_df["Strike"].tolist())
+
+    # print("PE ROWS =", len(pe_df))
+    # print("PE STRIKES =", pe_df["Strike"].tolist())
+
     option_chain = pd.merge(
         ce_df,
         pe_df,
         on="Strike"
     )
+
+    # print("MERGED ROWS =", len(option_chain))
+    # print("MERGED STRIKES =", option_chain["Strike"].tolist())
    
     T = get_time_to_expiry(selected_expiry)
 
@@ -600,129 +632,26 @@ while True:
     except Exception as e:
         print("Could not read latest spot:", e)
 
+    data_time = datetime.now().strftime("%H:%M:%S")
+
+    option_chain["Data Time"] = data_time
     option_chain.to_csv("option_chain.csv", index=False)
 
     summary_df = expiry_summary(option_chain)
+    summary_df["Data Time"] = data_time
     summary_df.to_csv("summary.csv", index=False)
+
     print("summary.csv updated")
+
+    # print(
+    #     option_chain[
+    #         ["Strike", "PE_TimeValue", "Trading_Bias"]
+    #     ]
+    #     .sort_values("PE_TimeValue", ascending=False)
+    #     .head(3)
+    #     .to_string(index=False)
+    # )
     
-
-    # ATM CE / PE token extraction for live_feed.py
-    atm_ce = option_df[
-        (option_df["Strike"] == atm_strike) &
-        (option_df["pOptionType"] == "CE") &
-        (option_df["pExpiryDate"] == selected_expiry)
-    ]
-
-    atm_pe = option_df[
-        (option_df["Strike"] == atm_strike) &
-        (option_df["pOptionType"] == "PE") &
-        (option_df["pExpiryDate"] == selected_expiry)
-    ]
-
-    ce_token = str(atm_ce.iloc[0]["pSymbol"])
-    pe_token = str(atm_pe.iloc[0]["pSymbol"])
-
-    with open("tokens.txt", "w") as f:
-        f.write(f"{ce_token}\n")
-        f.write(f"{pe_token}\n")
-        f.write(f"{atm_strike}\n") 
-        f.write(f"{atm_strike}\n")
-
-    option_chain["CE_LTP"] = pd.to_numeric(
-        option_chain["CE_LTP"],
-        errors="coerce"
-    )
-
-    option_chain["PE_LTP"] = pd.to_numeric(
-        option_chain["PE_LTP"],
-        errors="coerce"
-    )
-    # Step 5: Intrinsic Value & Time Value
-
-    # Correct intrinsic values
-
-    option_chain["CE_Intrinsic"] = option_chain["Strike"].apply(
-        lambda x: max(spot - x, 0)
-    )
-
-    option_chain["PE_Intrinsic"] = option_chain["Strike"].apply(
-        lambda x: max(x - spot, 0)
-    )
-
-    # Time value (never negative)
-
-    option_chain["CE_TimeValue"] = (
-        option_chain["CE_LTP"] -
-        option_chain["CE_Intrinsic"]
-    ).clip(lower=0).round(2)
-
-    option_chain["PE_TimeValue"] = (
-        option_chain["PE_LTP"] -
-        option_chain["PE_Intrinsic"]
-    ).clip(lower=0).round(2)
-
-    def trading_bias(row):
-
-        # ATM
-        if row["Status"] == "ATM":
-            return "ATM High Theta"
-
-        # CE side
-        if "ITM CE" in row["Status"]:
-
-            if row["CE_TimeValue"] > 150:
-                return "CE Sell Strong"
-
-            elif row["CE_TimeValue"] > 75:
-                return "CE Sell"
-
-            else:
-                return "CE Buy"
-
-        # PE side
-        if "ITM PE" in row["Status"]:
-
-            if row["PE_TimeValue"] > 150:
-                return "PE Sell Strong"
-
-            elif row["PE_TimeValue"] > 75:
-                return "PE Sell"
-
-            else:
-                return "PE Buy"
-
-                
-        option_chain = option_chain.loc[:, ~option_chain.columns.duplicated()].copy()
-
-    if "Trading_Bias" in option_chain.columns:
-        option_chain = option_chain.drop(columns=["Trading_Bias"])
-    
-        option_chain["Trading_Bias"] = "Neutral" 
-
-    option_chain["Trading_Bias"] = option_chain.apply(
-        trading_bias,
-        axis=1
-    )
-    print("\nTOP 3 CE SELL CANDIDATES")
-    print(
-        option_chain[
-            option_chain["Trading_Bias"].str.contains("CE Sell", na=False)
-        ][["Strike", "CE_TimeValue", "Trading_Bias"]]
-        # .sort_values("CE_TimeValue", ascending=False)
-        .head(3)
-        .to_string(index=False)
-    )
-
-    print("\nTOP 3 PE SELL CANDIDATES")
-    print(
-        option_chain[
-            option_chain["Trading_Bias"].str.contains("PE Sell", na=False)
-        ][["Strike", "PE_TimeValue", "Trading_Bias"]]
-        # .sort_values("PE_TimeValue", ascending=False)
-        .head(3)
-        .to_string(index=False)
-    )
     # ================= MAIN OUTPUT TABLES =================
 
     # ---- Table 1: Price / OI / PCR ----
@@ -787,6 +716,7 @@ while True:
 
         # Save latest data every refresh
 
+        option_chain["Data Time"] = datetime.now().strftime("%H:%M:%S")
         option_chain.to_csv("option_chain.csv", index=False)
 
         # ================= END MAIN OUTPUT TABLES =================

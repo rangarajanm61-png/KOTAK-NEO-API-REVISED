@@ -109,32 +109,52 @@ if login_result.returncode != 0:
 
 print("\nSTEP 2 : SELECT EXPIRY")
 
-print("\nOpen main.py expiry list reference:")
-print("1. 04Aug2026")
-print("2. 11Aug2026")
-print("3. 14Jul2026")
-print("4. 21Jul2026")
-print("5. 24Dec2029")
-print("6. 24Jun2031")
-print("7. 25Aug2026")
-print("8. 25Jun2030")
-print("9. 26Dec2028")
-print("10. 26Jun2029")
-print("11. 27Jun2028")
-print("12. 28Dec2027")
-print("13. 28Jul2026")
-print("14. 29Dec2026")
-print("15. 29Jun2027")
-print("16. 29Sep2026")
-print("17. 30Mar2027")
-print("18. 31Dec2030")
+print("\nSTEP 2 : SELECT EXPIRY")
 
-expiry = input("Enter Expiry Number: ").strip()
+expiry_list = [
+    "04Aug2026",
+    "11Aug2026",
+    "14Jul2026",
+    "21Jul2026",
+    "24Dec2029",
+    "24Jun2031",
+    "25Aug2026",
+    "25Jun2030",
+    "26Dec2028",
+    "26Jun2029",
+    "27Jun2028",
+    "28Dec2027",
+    "28Jul2026",
+    "29Dec2026",
+    "29Jun2027",
+    "29Sep2026",
+    "30Mar2027",
+    "31Dec2030",
+]
+
+for i, expiry_date in enumerate(expiry_list, start=1):
+    print(f"{i}. {expiry_date}")
+
+while True:
+    expiry_number = input("Enter Expiry Number: ").strip()
+
+    if not expiry_number.isdigit():
+        print("Please enter a valid number.")
+        continue
+
+    expiry_index = int(expiry_number) - 1
+
+    if 0 <= expiry_index < len(expiry_list):
+        selected_expiry = expiry_list[expiry_index]
+        break
+
+    print(f"Please enter a number from 1 to {len(expiry_list)}.")
 
 with open("selected_expiry.txt", "w") as f:
-    f.write(expiry)
+    f.write(selected_expiry)
 
-print(f"Selected Expiry Number saved: {expiry}")
+print(f"Selected Expiry Number: {expiry_number}")
+print(f"Selected Expiry Date saved: {selected_expiry}")
 
 def show_file_time(label, file_name):
     if os.path.exists(file_name):
@@ -194,9 +214,9 @@ else:
 
 show_file_time("Opening baseline file", OPENING_FILE)
     
-print("\nSTEP 4 : START LIVE FEED")
-live_process = subprocess.Popen(["python3", "live_feed.py"])
-print("✅ STEP 4 COMPLETED : live_feed.py started")
+# print("\nSTEP 4 : START LIVE FEED")
+# live_process = subprocess.Popen(["python3", "live_feed.py"])
+# print("✅ STEP 4 COMPLETED : live_feed.py started")
 
 print("\nSTEP 5 : START NIFTY SPOT")
 spot_process = subprocess.Popen(["python3", "nifty_index_live.py"])
