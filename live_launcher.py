@@ -196,7 +196,7 @@ ans2 = input("Update Opening Baseline from Closing file? (Y/N): ").strip().lower
 
 if ans2 == "y":
     print("\n⚠️ MANUAL EXPIRY CHECK")
-    print(f"Selected Expiry : {expiry}")
+    print(f"Selected Expiry : {selected_expiry}")
     print("Confirm closing file belongs to SAME expiry.")
 
     confirm = input("Proceed with update? (Y/N): ").strip().lower()

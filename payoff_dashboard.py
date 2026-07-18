@@ -7,8 +7,10 @@ import numpy as np
 import plotly.express as px
 # import time
 # from option_chain import calculate_pcr, expiry_summary
-from datetime import datetime
+from datetime import datetime,date,time
 from zoneinfo import ZoneInfo
+import math
+from scipy.stats import norm
 
 IST = ZoneInfo("Asia/Kolkata")
 
@@ -197,6 +199,126 @@ def strike_label(s, cepe, atm):
         return f"{s}  {'ITM' if s < atm else 'OTM'}"
     else:
         return f"{s}  {'ITM' if s > atm else 'OTM'}"
+
+def bs_option_price(spot, strike, time_years, iv, option_type, rate=0.065):
+    """
+    Black-Scholes theoretical option price.
+
+    spot        : Scenario NIFTY spot
+    strike      : Option strike
+    time_years  : Remaining time in years
+    iv          : Volatility as decimal, e.g. 0.12 for 12%
+    option_type : "CE" or "PE"
+    """
+
+    try:
+        spot = float(spot)
+        strike = float(strike)
+        time_years = max(float(time_years), 1e-8)
+        iv = max(float(iv), 0.0001)
+
+        d1 = (
+            math.log(spot / strike)
+            + (rate + 0.5 * iv**2) * time_years
+        ) / (iv * math.sqrt(time_years))
+
+        d2 = d1 - iv * math.sqrt(time_years)
+
+        if option_type == "CE":
+            return (
+                spot * norm.cdf(d1)
+                - strike * math.exp(-rate * time_years) * norm.cdf(d2)
+            )
+
+        return (
+            strike * math.exp(-rate * time_years) * norm.cdf(-d2)
+            - spot * norm.cdf(-d1)
+        )
+
+    except Exception:
+        return 0.0       
+
+def bs_greeks(
+    spot,
+    strike,
+    time_years,
+    iv,
+    option_type,
+    rate=0.065
+):
+    """
+    Black-Scholes scenario Greeks.
+
+    Returns:
+        delta : option delta
+        gamma : option gamma
+        theta : one-calendar-day theta
+        vega  : price change for 1 percentage-point IV change
+    """
+
+    try:
+        spot = float(spot)
+        strike = float(strike)
+        time_years = max(float(time_years), 1e-8)
+        iv = max(float(iv), 0.0001)
+
+        sqrt_t = math.sqrt(time_years)
+
+        d1 = (
+            math.log(spot / strike)
+            + (rate + 0.5 * iv**2) * time_years
+        ) / (iv * sqrt_t)
+
+        d2 = d1 - iv * sqrt_t
+
+        pdf_d1 = norm.pdf(d1)
+
+        gamma = pdf_d1 / (
+            spot * iv * sqrt_t
+        )
+
+        vega = (
+            spot * pdf_d1 * sqrt_t
+        ) / 100.0
+
+        if option_type == "CE":
+            delta = norm.cdf(d1)
+
+            theta_annual = (
+                -(spot * pdf_d1 * iv) / (2.0 * sqrt_t)
+                - rate
+                * strike
+                * math.exp(-rate * time_years)
+                * norm.cdf(d2)
+            )
+
+        else:
+            delta = norm.cdf(d1) - 1.0
+
+            theta_annual = (
+                -(spot * pdf_d1 * iv) / (2.0 * sqrt_t)
+                + rate
+                * strike
+                * math.exp(-rate * time_years)
+                * norm.cdf(-d2)
+            )
+
+        theta_daily = theta_annual / 365.0
+
+        return {
+            "delta": delta,
+            "gamma": gamma,
+            "theta": theta_daily,
+            "vega": vega
+        }
+
+    except Exception:
+        return {
+            "delta": 0.0,
+            "gamma": 0.0,
+            "theta": 0.0,
+            "vega": 0.0
+        }         
 # =========================================================
 # STRATEGY LIBRARY
 # =========================================================
@@ -291,7 +413,133 @@ strategy_map = {
 }
 
 selected_template = strategy_map[strategy_name]
+# ==========================================================
+# SCENARIO DATE / TIME / IV CONTROLS
+# ==========================================================
 
+IST = ZoneInfo("Asia/Kolkata")
+
+# Read selected expiry from option-chain data first
+expiry_text = ""
+
+if "Expiry" in option_df.columns:
+    expiry_values = option_df["Expiry"].dropna().astype(str)
+
+    if not expiry_values.empty:
+        expiry_text = expiry_values.iloc[0].strip()
+
+# Fallback to launcher expiry file
+if not expiry_text:
+    try:
+        with open("selected_expiry.txt", "r") as f:
+            expiry_text = f.read().strip()
+    except Exception:
+        expiry_text = ""
+
+# Convert expiry such as 21Jul2026 into a date
+try:
+    expiry_date = datetime.strptime(
+        expiry_text,
+        "%d%b%Y"
+    ).date()
+except Exception:
+    expiry_date = date.today()
+
+today_ist = datetime.now(IST).date()
+
+# Prevent an invalid minimum date after expiry
+minimum_scenario_date = min(today_ist, expiry_date)
+
+st.markdown("### Pre-Expiry Scenario")
+
+scenario_col1, scenario_col2, scenario_col3, scenario_col4 = st.columns(
+    [1.2, 1.0, 1.2, 1.0]
+)
+
+with scenario_col1:
+    scenario_date = st.date_input(
+        "Evaluation Date",
+        value=minimum_scenario_date,
+        min_value=minimum_scenario_date,
+        max_value=expiry_date,
+        key="scenario_date"
+    )
+
+with scenario_col2:
+    scenario_time = st.time_input(
+        "Evaluation Time",
+        value=time(15, 30),
+        key="scenario_time"
+    )
+
+with scenario_col3:
+    iv_mode = st.selectbox(
+        "IV Mode",
+        [
+            "Current IV",
+            "Current IV + Change",
+            "Manual Common IV"
+        ],
+        key="iv_mode"
+    )
+
+with scenario_col4:
+    if iv_mode == "Current IV + Change":
+        iv_change = st.number_input(
+            "IV Change (%)",
+            min_value=-50.0,
+            max_value=100.0,
+            value=0.0,
+            step=0.5,
+            key="iv_change"
+        )
+
+        manual_common_iv = None
+
+    elif iv_mode == "Manual Common IV":
+        manual_common_iv = st.number_input(
+            "Common IV (%)",
+            min_value=0.1,
+            max_value=200.0,
+            value=12.0,
+            step=0.1,
+            key="manual_common_iv"
+        )
+
+        iv_change = 0.0
+
+    else:
+        iv_change = 0.0
+        manual_common_iv = None
+
+scenario_datetime = datetime.combine(
+    scenario_date,
+    scenario_time
+).replace(tzinfo=IST)
+
+# Assume option expiry at 3:30 PM IST
+expiry_datetime = datetime.combine(
+    expiry_date,
+    time(15, 30)
+).replace(tzinfo=IST)
+
+remaining_seconds = max(
+    (expiry_datetime - scenario_datetime).total_seconds(),
+    0
+)
+
+scenario_T = max(
+    remaining_seconds / (365.0 * 24.0 * 60.0 * 60.0),
+    1e-8
+)
+
+remaining_days = remaining_seconds / 86400.0
+
+st.caption(
+    f"Expiry: {expiry_text or 'Not available'} | "
+    f"Evaluation: {scenario_datetime.strftime('%d-%b-%Y %H:%M')} IST | "
+    f"Time remaining: {remaining_days:.2f} calendar days"
+)
 label_col, input_col, blank_col = st.columns([1.2, 1.0, 4.8])
 
 with label_col:
@@ -534,7 +782,366 @@ for i in range(1, num_legs + 1):
         # Existing payoff calculation uses premium
         "premium": entry_price
     })
+    
+# BLOCK B STARTS HERE — NO INDENTATION
 
+scenario_price_range = list(
+    range(
+        int(atm - 1000),
+        int(atm + 1000) + 50,
+        50
+    )
+)
+
+scenario_rows = []
+# ==========================================================
+# PRE-EXPIRY SCENARIO CALCULATION
+# ==========================================================
+
+def find_column(df, possible_names):
+    for column_name in possible_names:
+        if column_name in df.columns:
+            return column_name
+    return None
+
+
+def get_leg_row(df, strike_value):
+    numeric_strikes = pd.to_numeric(
+        df["Strike"],
+        errors="coerce"
+    )
+
+    matching_rows = df.loc[
+        numeric_strikes == float(strike_value)
+    ]
+
+    if matching_rows.empty:
+        return None
+
+    return matching_rows.iloc[0]
+
+
+def safe_number(value, default=0.0):
+    value = pd.to_numeric(value, errors="coerce")
+
+    if pd.isna(value):
+        return float(default)
+
+    return float(value)
+
+
+# ----------------------------------------------------------
+# Calculate current strategy Greeks
+# ----------------------------------------------------------
+
+# ----------------------------------------------------------
+# Calculate strategy Greeks for selected date, time and IV
+# ----------------------------------------------------------
+
+net_delta = 0.0
+net_theta = 0.0
+net_vega = 0.0
+net_gamma = 0.0
+
+for leg in legs:
+
+    strike = float(leg["strike"])
+    cepe = leg["cepe"]
+    quantity = float(leg["lots"]) * LOT_SIZE
+
+    direction = (
+        1.0
+        if leg["buy_sell"] == "BUY"
+        else -1.0
+    )
+
+    option_row = get_leg_row(
+        option_df,
+        strike
+    )
+
+    current_iv = 12.0
+
+    if option_row is not None:
+
+        if cepe == "CE":
+            iv_column = find_column(
+                option_df,
+                ["CE IV", "CE_IV"]
+            )
+        else:
+            iv_column = find_column(
+                option_df,
+                ["PE IV", "PE_IV"]
+            )
+
+        if iv_column:
+            current_iv = safe_number(
+                option_row.get(iv_column),
+                default=12.0
+            )
+
+            if current_iv <= 0:
+                current_iv = 12.0
+
+    if iv_mode == "Manual Common IV":
+
+        scenario_iv_percent = float(
+            manual_common_iv
+        )
+
+    elif iv_mode == "Current IV + Change":
+
+        scenario_iv_percent = max(
+            current_iv + float(iv_change),
+            0.1
+        )
+
+    else:
+
+        scenario_iv_percent = current_iv
+
+    scenario_iv_decimal = (
+        scenario_iv_percent / 100.0
+    )
+
+    scenario_greeks = bs_greeks(
+        spot=spot_now,
+        strike=strike,
+        time_years=scenario_T,
+        iv=scenario_iv_decimal,
+        option_type=cepe
+    )
+
+    net_delta += (
+        direction
+        * scenario_greeks["delta"]
+        * quantity
+    )
+
+    net_theta += (
+        direction
+        * scenario_greeks["theta"]
+        * quantity
+    )
+
+    net_vega += (
+        direction
+        * scenario_greeks["vega"]
+        * quantity
+    )
+
+    net_gamma += (
+        direction
+        * scenario_greeks["gamma"]
+        * quantity
+    )
+
+# ----------------------------------------------------------
+# Calculate selected-date payoff over the spot range
+# ----------------------------------------------------------
+
+for scenario_spot in scenario_price_range:
+
+    total_scenario_pl = 0.0
+
+    for leg in legs:
+
+        strike = float(leg["strike"])
+        cepe = leg["cepe"]
+        quantity = float(leg["lots"]) * LOT_SIZE
+        entry_price = float(leg["entry"])
+
+        option_row = get_leg_row(option_df, strike)
+
+        current_iv = 12.0
+
+        if option_row is not None:
+
+            if cepe == "CE":
+
+                iv_column = find_column(
+                    option_df,
+                    ["CE IV", "CE_IV"]
+                )
+
+            else:
+
+                iv_column = find_column(
+                    option_df,
+                    ["PE IV", "PE_IV"]
+                )
+
+            if iv_column:
+
+                current_iv = safe_number(
+                    option_row.get(iv_column),
+                    default=12.0
+                )
+
+                if current_iv <= 0:
+                    current_iv = 12.0
+
+        # Choose IV according to dashboard selection
+        if iv_mode == "Manual Common IV":
+
+            scenario_iv_percent = float(
+                manual_common_iv
+            )
+
+        elif iv_mode == "Current IV + Change":
+
+            scenario_iv_percent = max(
+                current_iv + float(iv_change),
+                0.1
+            )
+
+        else:
+
+            scenario_iv_percent = current_iv
+
+        scenario_iv_decimal = (
+            scenario_iv_percent / 100.0
+        )
+
+        theoretical_price = bs_option_price(
+            spot=scenario_spot,
+            strike=strike,
+            time_years=scenario_T,
+            iv=scenario_iv_decimal,
+            option_type=cepe
+        )
+
+        if leg["buy_sell"] == "BUY":
+
+            leg_scenario_pl = (
+                theoretical_price - entry_price
+            ) * quantity
+
+        else:
+
+            leg_scenario_pl = (
+                entry_price - theoretical_price
+            ) * quantity
+
+        total_scenario_pl += leg_scenario_pl
+
+    scenario_rows.append({
+        "Spot": scenario_spot,
+        "Scenario Payoff": total_scenario_pl
+    })
+
+
+scenario_df = pd.DataFrame(scenario_rows)
+
+
+# ----------------------------------------------------------
+# Strategy balance indication
+# ----------------------------------------------------------
+
+if abs(net_delta) <= 5:
+
+    position_bias = "Delta Neutral"
+
+elif net_delta > 5:
+
+    position_bias = "Bullish"
+
+else:
+
+    position_bias = "Bearish"
+
+
+st.markdown("### Strategy Balance")
+
+g1, g2, g3, g4, g5 = st.columns(5)
+
+g1.metric(
+    "Net Delta",
+    f"{net_delta:,.2f}"
+)
+
+g2.metric(
+    "Net Theta",
+    f"{net_theta:,.2f}"
+)
+
+g3.metric(
+    "Net Vega",
+    f"{net_vega:,.2f}"
+)
+
+g4.metric(
+    "Net Gamma",
+    f"{net_gamma:,.4f}"
+)
+
+g5.metric(
+    "Position Bias",
+    position_bias
+)
+
+
+# ----------------------------------------------------------
+# Scenario P/L near present spot
+# ----------------------------------------------------------
+
+nearest_scenario_spot = min(
+    scenario_price_range,
+    key=lambda value: abs(value - spot_now)
+)
+
+scenario_live_pl = scenario_df.loc[
+    scenario_df["Spot"] == nearest_scenario_spot,
+    "Scenario Payoff"
+].iloc[0]
+
+st.metric(
+    "Estimated P/L at Selected Date, Time and IV",
+    f"₹{scenario_live_pl:,.0f}"
+)
+
+
+# ----------------------------------------------------------
+# Selected-date payoff graph
+# ----------------------------------------------------------
+
+st.markdown("### Payoff at Selected Date / Time")
+
+fig_scenario = px.line(
+    scenario_df,
+    x="Spot",
+    y="Scenario Payoff",
+    title=(
+        "Pre-Expiry Payoff — "
+        + scenario_datetime.strftime(
+            "%d-%b-%Y %H:%M"
+        )
+        + " IST"
+    )
+)
+
+fig_scenario.add_vline(
+    x=spot_now,
+    line_dash="dash",
+    annotation_text="Current Spot"
+)
+
+fig_scenario.add_hline(
+    y=0,
+    line_dash="dash"
+)
+
+fig_scenario.update_layout(
+    height=450,
+    xaxis_title="Spot",
+    yaxis_title="Profit / Loss ₹"
+)
+
+st.plotly_chart(
+    fig_scenario,
+    width="stretch"
+)
 # =========================
 # PAYOFF CALCULATION
 # =========================
