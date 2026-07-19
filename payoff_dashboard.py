@@ -569,8 +569,8 @@ legs = []
 # Leg | Buy/Sell | CE/PE | Strike | Lots | Manual | Entry | LTP | MTM
 # =========================================================
 
-h1, h2, h3, h4, h5, h6, h7, h8, h9 = st.columns(
-    [0.25, 0.82, 0.60, 1.20, 0.50, 0.48, 0.68, 0.58, 0.70]
+h1, h2, h3, h4, h5, h6, h7, h8, h9, h10 = st.columns(
+    [0.25, 0.82, 0.60, 1.20, 0.50, 0.48, 0.68, 0.58, 0.68, 0.70]
 )
 
 h1.markdown("**Leg**")
@@ -581,8 +581,29 @@ h5.markdown("**Lots**")
 h6.markdown("**Manual**")
 h7.markdown("**Entry**")
 h8.markdown("**LTP**")
-h9.markdown("**MTM**")
+h9.markdown("**IV Used**")
+h10.markdown("**MTM**")
 
+def find_column(df, possible_names):
+    for column_name in possible_names:
+        if column_name in df.columns:
+            return column_name
+    return None
+
+def get_leg_row(df, strike_value):
+    numeric_strikes = pd.to_numeric(
+        df["Strike"],
+        errors="coerce"
+    )
+
+    matching_rows = df.loc[
+        numeric_strikes == float(strike_value)
+    ]
+
+    if matching_rows.empty:
+        return None
+
+    return matching_rows.iloc[0]
 
 for i in range(1, num_legs + 1):
 
@@ -591,8 +612,8 @@ for i in range(1, num_legs + 1):
         if strategy_name != "Custom"
         else None
     )
-    c0, c1, c2, c3, c4, c5, c6, c7, c8 = st.columns(
-        [0.25, 0.82, 0.60, 1.20, 0.50, 0.48, 0.68, 0.58, 0.70]
+    c0, c1, c2, c3, c4, c5, c6, c7, c8, c9 = st.columns(
+        [0.25, 0.82, 0.60, 1.20, 0.50, 0.48, 0.68, 0.58, 0.68, 0.70]
     )
 
     # Leg number
@@ -728,13 +749,13 @@ for i in range(1, num_legs + 1):
                 unsafe_allow_html=True
             )
 
-    # MTM calculation
-    quantity = lots * LOT_SIZE
+        # MTM calculation
+        quantity = lots * LOT_SIZE
 
-    if buy_sell == "BUY":
-        mtm = (auto_premium - entry_price) * quantity
-    else:
-        mtm = (entry_price - auto_premium) * quantity
+        if buy_sell == "BUY":
+            mtm = (auto_premium - entry_price) * quantity
+        else:
+            mtm = (entry_price - auto_premium) * quantity
 
     # Live LTP display
     with c7:
@@ -751,9 +772,81 @@ for i in range(1, num_legs + 1):
             """,
             unsafe_allow_html=True
         )
+        # IV used display — populated later after scenario IV is calculated
+        # IV display column
 
-    # MTM display
+        option_row_for_iv = get_leg_row(
+        option_df,
+        float(strike),
+    )
+
+    display_iv = 12.0
+
+    if option_row_for_iv is not None:
+        if cepe == "CE":
+            iv_column = find_column(
+                option_df,
+                ["CE IV", "CE_IV"],
+            )
+        else:
+            iv_column = find_column(
+                option_df,
+                ["PE IV", "PE_IV"],
+            )
+
+        if iv_column:
+            raw_iv = option_row_for_iv.get(iv_column)
+
+            try:
+                display_iv = float(raw_iv)
+            except (TypeError, ValueError):
+                display_iv = 12.0
+
+    if display_iv <= 0:
+        display_iv = 12.0
+
     with c8:
+        iv_tick_col, iv_value_col = st.columns(
+            [0.28, 0.72],
+            gap="small",
+        )
+
+        with iv_tick_col:
+            manual_iv = st.checkbox(
+                "Manual IV",
+                value=False,
+                key=f"leg{i}_manual_iv",
+                label_visibility="collapsed",
+            )
+
+        with iv_value_col:
+            if manual_iv:
+                display_iv = st.number_input(
+                    "IV Used",
+                    min_value=0.1,
+                    max_value=200.0,
+                    value=float(display_iv),
+                    step=0.1,
+                    format="%.2f",
+                    key=f"leg{i}_iv_value",
+                    label_visibility="collapsed",
+                )
+            else:
+                st.markdown(
+                    f"""
+                    <div style="
+                        padding-top:8px;
+                        font-size:14px;
+                        font-weight:700;
+                        white-space:nowrap;
+                    ">
+                        {display_iv:.2f}%
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+    # MTM display
+    with c9:
         st.markdown(
             f"""
             <div style="
@@ -779,10 +872,11 @@ for i in range(1, num_legs + 1):
         "ltp": auto_premium,
         "mtm": mtm,
         "premium": entry_price,
+        "manual_iv": manual_iv,
+        "iv_used": float(display_iv) / 100.0,
+        "scenario_iv": float(display_iv) / 100.0,
     })
     
-# BLOCK B STARTS HERE — NO INDENTATION
-
 # ============================================================
 # PAYOFF INTERVAL AND COMMON SPOT RANGE
 # ============================================================
@@ -811,29 +905,6 @@ scenario_rows = []
 # PRE-EXPIRY SCENARIO CALCULATION
 # ==========================================================
 
-def find_column(df, possible_names):
-    for column_name in possible_names:
-        if column_name in df.columns:
-            return column_name
-    return None
-
-
-def get_leg_row(df, strike_value):
-    numeric_strikes = pd.to_numeric(
-        df["Strike"],
-        errors="coerce"
-    )
-
-    matching_rows = df.loc[
-        numeric_strikes == float(strike_value)
-    ]
-
-    if matching_rows.empty:
-        return None
-
-    return matching_rows.iloc[0]
-
-
 def safe_number(value, default=0.0):
     value = pd.to_numeric(value, errors="coerce")
 
@@ -844,10 +915,6 @@ def safe_number(value, default=0.0):
 
 
 # ----------------------------------------------------------
-# Calculate current strategy Greeks
-# ----------------------------------------------------------
-
-# ----------------------------------------------------------
 # Calculate strategy Greeks for selected date, time and IV
 # ----------------------------------------------------------
 
@@ -856,7 +923,7 @@ net_theta = 0.0
 net_vega = 0.0
 net_gamma = 0.0
 
-for leg in legs:
+for leg_number, leg in enumerate(legs, start=1):
 
     strike = float(leg["strike"])
     cepe = leg["cepe"]
@@ -872,7 +939,6 @@ for leg in legs:
         option_df,
         strike
     )
-
     current_iv = 12.0
 
     if option_row is not None:
@@ -897,26 +963,40 @@ for leg in legs:
             if current_iv <= 0:
                 current_iv = 12.0
 
-    if iv_mode == "Manual Common IV":
+    # Per-leg manual IV has first priority
 
-        scenario_iv_percent = float(
-            manual_common_iv
-        )
-
-    elif iv_mode == "Current IV + Change":
-
-        scenario_iv_percent = max(
-            current_iv + float(iv_change),
-            0.1
+    if leg.get("manual_iv", False):
+        scenario_iv_decimal = float(
+            leg.get("iv_used", 0.12)
         )
 
     else:
+        # Otherwise use the selected global IV mode
 
-        scenario_iv_percent = current_iv
+        if iv_mode == "Manual Common IV":
+            scenario_iv_percent = float(manual_common_iv)
 
-    scenario_iv_decimal = (
-        scenario_iv_percent / 100.0
-    )
+        elif iv_mode == "Current IV + Change":
+            scenario_iv_percent = max(
+                current_iv + float(iv_change),
+                0.1,
+            )
+
+        else:
+            scenario_iv_percent = current_iv
+
+        scenario_iv_decimal = (
+            scenario_iv_percent / 100.0
+        )
+
+    # Minimum valid IV
+        scenario_iv_decimal = max(
+            scenario_iv_decimal,
+            0.001,
+        )
+
+# Display the actual IV used in the leg-selection table
+
 
     leg["scenario_iv"] = scenario_iv_decimal
     leg["iv_used"] = scenario_iv_decimal
@@ -1243,9 +1323,7 @@ for price in scenario_price_range:
         "Expiry P/L": round(total_expiry_payoff, 2)
     })
 
-
 expiry_df = pd.DataFrame(expiry_rows)
-
 
 # ============================================================
 # MERGE BOTH PAYOFF CALCULATIONS
@@ -1341,28 +1419,53 @@ max_expiry_loss = payoff_comparison_df[
     "Expiry P/L"
 ].min()
 
+# Spot where each metric occurs
+selected_max_profit_spot = payoff_comparison_df.loc[
+    payoff_comparison_df["Selected Date/Time P/L"].idxmax(),
+    "Spot"
+]
+
+selected_max_loss_spot = payoff_comparison_df.loc[
+    payoff_comparison_df["Selected Date/Time P/L"].idxmin(),
+    "Spot"
+]
+
+expiry_max_profit_spot = payoff_comparison_df.loc[
+    payoff_comparison_df["Expiry P/L"].idxmax(),
+    "Spot"
+]
+
+expiry_max_loss_spot = payoff_comparison_df.loc[
+    payoff_comparison_df["Expiry P/L"].idxmin(),
+    "Spot"
+]
+
 summary_col1, summary_col2, summary_col3, summary_col4 = (
     st.columns(4)
 )
 
 summary_col1.metric(
     "Selected-Time Max Profit",
-    f"₹{max_selected_profit:,.0f}"
+    f"₹{max_selected_profit:,.0f}",
+    delta=f"@ NIFTY {selected_max_profit_spot:,.0f}"
 )
 
 summary_col2.metric(
     "Selected-Time Max Loss",
-    f"₹{max_selected_loss:,.0f}"
+    f"₹{max_selected_loss:,.0f}",
+    delta=f"@ NIFTY {selected_max_loss_spot:,.0f}"
 )
 
 summary_col3.metric(
     "Expiry Max Profit",
-    f"₹{max_expiry_profit:,.0f}"
+    f"₹{max_expiry_profit:,.0f}",
+    delta=f"@ NIFTY {expiry_max_profit_spot:,.0f}"
 )
 
 summary_col4.metric(
     "Expiry Max Loss",
-    f"₹{max_expiry_loss:,.0f}"
+    f"₹{max_expiry_loss:,.0f}",
+    delta=f"@ NIFTY {expiry_max_loss_spot:,.0f}"
 )
 
 
@@ -1381,47 +1484,47 @@ else:
         "within the selected spot range."
     )
 
-# ============================================================
-# INDIVIDUAL LEG IV SUMMARY
-# ============================================================
+# # ============================================================
+# # INDIVIDUAL LEG IV SUMMARY
+# # ============================================================
 
-leg_iv_rows = []
+# leg_iv_rows = []
 
-for leg_number, leg in enumerate(legs, start=1):
+# for leg_number, leg in enumerate(legs, start=1):
 
-    leg_iv = float(
-        leg.get(
-            "scenario_iv",
-            leg.get(
-                "iv_used",
-                leg.get("iv", 0.0)
-            )
-        )
-    )
+#     leg_iv = float(
+#         leg.get(
+#             "scenario_iv",
+#             leg.get(
+#                 "iv_used",
+#                 leg.get("iv", 0.0)
+#             )
+#         )
+#     )
 
-    # Convert decimal IV such as 0.12 into percentage 12.00
-    if 0 < leg_iv <= 1.0:
-        leg_iv_percent = leg_iv * 100.0
-    else:
-        leg_iv_percent = leg_iv
+#     # Convert decimal IV such as 0.12 into percentage 12.00
+#     if 0 < leg_iv <= 1.0:
+#         leg_iv_percent = leg_iv * 100.0
+#     else:
+#         leg_iv_percent = leg_iv
 
-    leg_iv_rows.append({
-        "Leg": leg_number,
-        "Buy/Sell": leg.get("buy_sell", ""),
-        "CE/PE": leg.get("cepe", ""),
-        "Strike": int(float(leg.get("strike", 0))),
-        "IV Used (%)": round(leg_iv_percent, 2)
-    })
+#     leg_iv_rows.append({
+#         "Leg": leg_number,
+#         "Buy/Sell": leg.get("buy_sell", ""),
+#         "CE/PE": leg.get("cepe", ""),
+#         "Strike": int(float(leg.get("strike", 0))),
+#         "IV Used (%)": round(leg_iv_percent, 2)
+#     })
 
-leg_iv_df = pd.DataFrame(leg_iv_rows)
+# leg_iv_df = pd.DataFrame(leg_iv_rows)
 
-st.markdown("### Individual Leg IV Used")
+# st.markdown("### Individual Leg IV Used")
 
-st.dataframe(
-    leg_iv_df,
-    width="stretch",
-    hide_index=True
-)
+# st.dataframe(
+#     leg_iv_df,
+#     width="stretch",
+#     hide_index=True
+# )
 # ============================================================
 # PAYOFF TABLE BEFORE CHART
 # ============================================================
