@@ -66,11 +66,13 @@ client.on_error = on_error
 client.on_open = on_open
 
 client.subscribe(
-    instrument_tokens=[{
-        "instrument_token": "26000",
-        "exchange_segment": "nse_cm"
-    }],
-    isIndex=False,
+    instrument_tokens=[
+        {
+            "instrument_token": "26000",
+            "exchange_segment": "nse_cm"
+        }
+    ],
+    isIndex=True,
     isDepth=False
 )
 

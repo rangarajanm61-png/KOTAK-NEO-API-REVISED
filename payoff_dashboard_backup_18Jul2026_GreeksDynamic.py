@@ -778,35 +778,22 @@ for i in range(1, num_legs + 1):
         "entry": entry_price,
         "ltp": auto_premium,
         "mtm": mtm,
-        "premium": entry_price,
+
+        # Existing payoff calculation uses premium
+        "premium": entry_price
     })
     
 # BLOCK B STARTS HERE — NO INDENTATION
 
-# ============================================================
-# PAYOFF INTERVAL AND COMMON SPOT RANGE
-# ============================================================
-
-interval_col1, interval_col2 = st.columns([1.2, 4.8])
-
-with interval_col1:
-    payoff_interval = st.selectbox(
-        "Spot Interval",
-        options=[5, 10, 20, 50],
-        index=1,                       # Default = 10
-        key="payoff_interval"
-    )
-
 scenario_price_range = list(
     range(
         int(atm - 1000),
-        int(atm + 1000) + payoff_interval,
-        payoff_interval
+        int(atm + 1000) + 50,
+        50
     )
 )
 
 scenario_rows = []
-
 # ==========================================================
 # PRE-EXPIRY SCENARIO CALCULATION
 # ==========================================================
@@ -918,9 +905,6 @@ for leg in legs:
         scenario_iv_percent / 100.0
     )
 
-    leg["scenario_iv"] = scenario_iv_decimal
-    leg["iv_used"] = scenario_iv_decimal
-
     scenario_greeks = bs_greeks(
         spot=spot_now,
         strike=strike,
@@ -957,90 +941,95 @@ for leg in legs:
 # Calculate selected-date payoff over the spot range
 # ----------------------------------------------------------
 
-# ============================================================
-# PRE-EXPIRY SCENARIO CALCULATION
-# Individual-leg P/L plus total strategy P/L
-# ============================================================
-
-scenario_rows = []
-
 for scenario_spot in scenario_price_range:
 
-    total_scenario_payoff = 0.0
+    total_scenario_pl = 0.0
 
-    scenario_row = {
-        "Spot": float(scenario_spot)
-    }
-
-    for leg_number, leg in enumerate(legs, start=1):
+    for leg in legs:
 
         strike = float(leg["strike"])
-        entry_price = float(
-            leg.get(
-                "entry",
-                leg.get("premium", 0.0)
-            )
-        )
+        cepe = leg["cepe"]
+        quantity = float(leg["lots"]) * LOT_SIZE
+        entry_price = float(leg["entry"])
 
-        lots = int(leg.get("lots", 1))
-        quantity = lots * LOT_SIZE
+        option_row = get_leg_row(option_df, strike)
 
-        cepe = str(leg["cepe"]).upper()
-        buy_sell = str(leg["buy_sell"]).upper()
+        current_iv = 12.0
 
-        # Use the IV already selected/stored for this individual leg
-        leg_iv = float(
-            leg.get(
-                "scenario_iv",
-                leg.get(
-                    "iv_used",
-                    leg.get("iv", 0.12)
+        if option_row is not None:
+
+            if cepe == "CE":
+
+                iv_column = find_column(
+                    option_df,
+                    ["CE IV", "CE_IV"]
                 )
+
+            else:
+
+                iv_column = find_column(
+                    option_df,
+                    ["PE IV", "PE_IV"]
+                )
+
+            if iv_column:
+
+                current_iv = safe_number(
+                    option_row.get(iv_column),
+                    default=12.0
+                )
+
+                if current_iv <= 0:
+                    current_iv = 12.0
+
+        # Choose IV according to dashboard selection
+        if iv_mode == "Manual Common IV":
+
+            scenario_iv_percent = float(
+                manual_common_iv
             )
+
+        elif iv_mode == "Current IV + Change":
+
+            scenario_iv_percent = max(
+                current_iv + float(iv_change),
+                0.1
+            )
+
+        else:
+
+            scenario_iv_percent = current_iv
+
+        scenario_iv_decimal = (
+            scenario_iv_percent / 100.0
         )
-
-        # Convert percentage IV such as 18.5 into decimal 0.185
-        if leg_iv > 1.0:
-            leg_iv = leg_iv / 100.0
-
-        # Prevent invalid or zero IV
-        leg_iv = max(leg_iv, 0.0001)
 
         theoretical_price = bs_option_price(
-            spot=float(scenario_spot),
+            spot=scenario_spot,
             strike=strike,
             time_years=scenario_T,
-            iv=leg_iv,
+            iv=scenario_iv_decimal,
             option_type=cepe
         )
 
-        if buy_sell == "BUY":
-            leg_scenario_payoff = (
+        if leg["buy_sell"] == "BUY":
+
+            leg_scenario_pl = (
                 theoretical_price - entry_price
             ) * quantity
+
         else:
-            leg_scenario_payoff = (
+
+            leg_scenario_pl = (
                 entry_price - theoretical_price
             ) * quantity
 
-        total_scenario_payoff += leg_scenario_payoff
+        total_scenario_pl += leg_scenario_pl
 
-        leg_name = (
-            f"Leg {leg_number} "
-            f"{buy_sell} {cepe} {int(strike)}"
-        )
-
-        scenario_row[leg_name] = round(
-            leg_scenario_payoff,
-            2
-        )
-
-    scenario_row["Scenario Payoff"] = round(
-        total_scenario_payoff,
-        2
-    )
-
-    scenario_rows.append(scenario_row)
+    scenario_rows.append({
+        "Spot": scenario_spot,
+        "Scenario Payoff": total_scenario_pl
+    })
 
 
 scenario_df = pd.DataFrame(scenario_rows)
@@ -1092,6 +1081,7 @@ g5.metric(
     position_bias
 )
 
+
 # ----------------------------------------------------------
 # Scenario P/L near present spot
 # ----------------------------------------------------------
@@ -1110,6 +1100,7 @@ st.metric(
     "Estimated P/L at Selected Date, Time and IV",
     f"₹{scenario_live_pl:,.0f}"
 )
+
 
 # ----------------------------------------------------------
 # Selected-date payoff graph
@@ -1151,437 +1142,78 @@ st.plotly_chart(
     fig_scenario,
     width="stretch"
 )
-# ============================================================
-# COMBINED PAYOFF TABLE:
-# SELECTED DATE/TIME P/L + EXPIRY P/L
-# ============================================================
+# =========================
+# PAYOFF CALCULATION
+# =========================
 
-# Convert the already-calculated pre-expiry scenario rows
-scenario_df = pd.DataFrame(scenario_rows)
+price_range = list(range(int(atm - 1000), int(atm + 1000) + 50, 50))
+payoff_rows = []
 
-if scenario_df.empty:
-    st.warning("Selected date/time payoff calculation returned no rows.")
-    st.stop()
-
-# Standardise the selected-date payoff column name
-
-if "Scenario Payoff" in scenario_df.columns:
-    scenario_df = scenario_df.rename(
-        columns={"Scenario Payoff": "Selected Date/Time P/L"}
-    )
-
-elif "Payoff" in scenario_df.columns:
-    scenario_df = scenario_df.rename(
-        columns={"Payoff": "Selected Date/Time P/L"}
-    )
-
-elif "P/L" in scenario_df.columns:
-    scenario_df = scenario_df.rename(
-        columns={"P/L": "Selected Date/Time P/L"}
-    )
-
-required_scenario_columns = {
-    "Spot",
-    "Selected Date/Time P/L"
-}
-
-if not required_scenario_columns.issubset(scenario_df.columns):
-    st.error(
-        "scenario_rows must contain Spot and Payoff values. "
-        f"Available columns: {scenario_df.columns.tolist()}"
-    )
-    st.stop()
-
-
-# ============================================================
-# EXPIRY PAYOFF CALCULATION
-# At expiry, option value = intrinsic value only
-# ============================================================
-
-expiry_rows = []
-
-for price in scenario_price_range:
-
-    total_expiry_payoff = 0.0
+for price in price_range:
+    total_payoff = 0
 
     for leg in legs:
+        strike = leg["strike"]
+        premium = leg["premium"]
+        lots = leg["lots"]
+        qty = lots * LOT_SIZE
 
-        strike = float(leg["strike"])
-        entry_price = float(
-            leg.get(
-                "entry",
-                leg.get("premium", 0.0)
-            )
-        )
-
-        lots = int(leg.get("lots", 1))
-        quantity = lots * LOT_SIZE
-
-        cepe = str(leg["cepe"]).upper()
-        buy_sell = str(leg["buy_sell"]).upper()
-
-        # Intrinsic value at expiry
-        if cepe == "CE":
-            intrinsic_value = max(float(price) - strike, 0.0)
+        if leg["cepe"] == "CE":
+            intrinsic = max(price - strike, 0)
         else:
-            intrinsic_value = max(strike - float(price), 0.0)
+            intrinsic = max(strike - price, 0)
 
-        # Profit/loss uses ENTRY premium
-        if buy_sell == "BUY":
-            leg_expiry_payoff = (
-                intrinsic_value - entry_price
-            ) * quantity
+        if leg["buy_sell"] == "BUY":
+            leg_payoff = (intrinsic - premium) * qty
         else:
-            leg_expiry_payoff = (
-                entry_price - intrinsic_value
-            ) * quantity
+            leg_payoff = (premium - intrinsic) * qty
 
-        total_expiry_payoff += leg_expiry_payoff
+        total_payoff += leg_payoff
 
-    expiry_rows.append({
-        "Spot": float(price),
-        "Expiry P/L": round(total_expiry_payoff, 2)
+    payoff_rows.append({
+        "Spot": price,
+        "Payoff": total_payoff
     })
 
+payoff_df = pd.DataFrame(payoff_rows)
 
-expiry_df = pd.DataFrame(expiry_rows)
+# Live P/L near current spot
+nearest_spot = min(price_range, key=lambda x: abs(x - spot_now))
+live_pl = payoff_df[payoff_df["Spot"] == nearest_spot]["Payoff"].iloc[0]
 
+max_profit = payoff_df["Payoff"].max()
+max_loss = payoff_df["Payoff"].min()
 
-# ============================================================
-# MERGE BOTH PAYOFF CALCULATIONS
-# ============================================================
-
-payoff_comparison_df = pd.merge(
-    scenario_df[
-        ["Spot", "Selected Date/Time P/L"]
-    ],
-    expiry_df,
-    on="Spot",
-    how="inner"
-)
-
-payoff_comparison_df = payoff_comparison_df.sort_values(
-    "Spot"
-).reset_index(drop=True)
-
-payoff_comparison_df[
-    "Selected Date/Time P/L"
-] = pd.to_numeric(
-    payoff_comparison_df["Selected Date/Time P/L"],
-    errors="coerce"
-).fillna(0.0)
-
-payoff_comparison_df[
-    "Expiry P/L"
-] = pd.to_numeric(
-    payoff_comparison_df["Expiry P/L"],
-    errors="coerce"
-).fillna(0.0)
-
-
-# ============================================================
-# BREAK-EVEN DETECTION FROM EXPIRY PAYOFF
-# ============================================================
-
-break_even_points = []
-
-for row_number in range(
-    1,
-    len(payoff_comparison_df)
-):
-
-    previous_row = payoff_comparison_df.iloc[row_number - 1]
-    current_row = payoff_comparison_df.iloc[row_number]
-
-    previous_spot = float(previous_row["Spot"])
-    current_spot = float(current_row["Spot"])
-
-    previous_pl = float(previous_row["Expiry P/L"])
-    current_pl = float(current_row["Expiry P/L"])
-
-    # Exact zero
-    if previous_pl == 0:
-        break_even_points.append(previous_spot)
-
-    # P/L changes sign between two spot points
-    elif previous_pl * current_pl < 0:
-
-        # Linear interpolation for a more accurate break-even
-        break_even = previous_spot + (
-            (0.0 - previous_pl)
-            * (current_spot - previous_spot)
-            / (current_pl - previous_pl)
-        )
-
-        break_even_points.append(round(break_even, 2))
-
-# Remove duplicates while preserving order
-break_even_points = list(
-    dict.fromkeys(break_even_points)
-)
-
-
-# ============================================================
-# SUMMARY METRICS
-# ============================================================
-
-max_selected_profit = payoff_comparison_df[
-    "Selected Date/Time P/L"
-].max()
-
-max_selected_loss = payoff_comparison_df[
-    "Selected Date/Time P/L"
-].min()
-
-max_expiry_profit = payoff_comparison_df[
-    "Expiry P/L"
-].max()
-
-max_expiry_loss = payoff_comparison_df[
-    "Expiry P/L"
-].min()
-
-summary_col1, summary_col2, summary_col3, summary_col4 = (
-    st.columns(4)
-)
-
-summary_col1.metric(
-    "Selected-Time Max Profit",
-    f"₹{max_selected_profit:,.0f}"
-)
-
-summary_col2.metric(
-    "Selected-Time Max Loss",
-    f"₹{max_selected_loss:,.0f}"
-)
-
-summary_col3.metric(
-    "Expiry Max Profit",
-    f"₹{max_expiry_profit:,.0f}"
-)
-
-summary_col4.metric(
-    "Expiry Max Loss",
-    f"₹{max_expiry_loss:,.0f}"
-)
-
-
-if break_even_points:
-    break_even_text = ", ".join(
-        f"{point:,.2f}"
-        for point in break_even_points
-    )
-
-    st.info(
-        f"Expiry Break-even Point(s): {break_even_text}"
-    )
-else:
-    st.info(
-        "No expiry break-even point is present "
-        "within the selected spot range."
-    )
-
-# ============================================================
-# INDIVIDUAL LEG IV SUMMARY
-# ============================================================
-
-leg_iv_rows = []
-
-for leg_number, leg in enumerate(legs, start=1):
-
-    leg_iv = float(
-        leg.get(
-            "scenario_iv",
-            leg.get(
-                "iv_used",
-                leg.get("iv", 0.0)
-            )
-        )
-    )
-
-    # Convert decimal IV such as 0.12 into percentage 12.00
-    if 0 < leg_iv <= 1.0:
-        leg_iv_percent = leg_iv * 100.0
-    else:
-        leg_iv_percent = leg_iv
-
-    leg_iv_rows.append({
-        "Leg": leg_number,
-        "Buy/Sell": leg.get("buy_sell", ""),
-        "CE/PE": leg.get("cepe", ""),
-        "Strike": int(float(leg.get("strike", 0))),
-        "IV Used (%)": round(leg_iv_percent, 2)
-    })
-
-leg_iv_df = pd.DataFrame(leg_iv_rows)
-
-st.markdown("### Individual Leg IV Used")
-
-st.dataframe(
-    leg_iv_df,
-    width="stretch",
-    hide_index=True
-)
-# ============================================================
-# PAYOFF TABLE BEFORE CHART
-# ============================================================
-
-st.markdown("### Payoff Table")
-
-display_payoff_df = payoff_comparison_df.copy()
-
-display_payoff_df["Spot"] = display_payoff_df[
-    "Spot"
-].map(lambda value: f"{value:,.2f}")
-
-display_payoff_df[
-    "Selected Date/Time P/L"
-] = display_payoff_df[
-    "Selected Date/Time P/L"
-].map(lambda value: f"₹{value:,.0f}")
-
-display_payoff_df[
-    "Expiry P/L"
-] = display_payoff_df[
-    "Expiry P/L"
-].map(lambda value: f"₹{value:,.0f}")
-
-st.dataframe(
-    display_payoff_df,
-    use_container_width=True,
-    hide_index=True,
-    height=420
-)
-
-
-# ============================================================
-# COMBINED PAYOFF CHART
-# ============================================================
-
-# ============================================================
-# FINAL CHART:
-# EACH LEG AT SELECTED DATE/TIME + THICK NET PAYOFF
-# ============================================================
+c1, c2, c3 = st.columns(3)
+c1.metric("Live P/L near Spot", f"₹{live_pl:,.0f}")
+c2.metric("Max Profit in Range", f"₹{max_profit:,.0f}")
+c3.metric("Max Loss in Range", f"₹{max_loss:,.0f}")
 
 st.markdown(
-    "### Individual Legs and Net Payoff"
+    "<div style='height:2px'></div>",
+    unsafe_allow_html=True
+)
+st.markdown("### Payoff at Expiry")
+
+fig_payoff = px.line(
+    payoff_df,
+    x="Spot",
+    y="Payoff",
+    title="Payoff at Expiry"
 )
 
-fig_final = go.Figure()
-
-# Identify all individual-leg columns
-leg_columns = [
-    column
-    for column in scenario_df.columns
-    if column.startswith("Leg ")
-]
-
-# ------------------------------------------------------------
-# Individual leg lines — thin
-# ------------------------------------------------------------
-
-for leg_column in leg_columns:
-
-    fig_final.add_trace(
-        go.Scatter(
-            x=scenario_df["Spot"],
-            y=scenario_df[leg_column],
-            mode="lines",
-            name=leg_column,
-            line=dict(
-                width=1.5
-            ),
-            opacity=0.75,
-            hovertemplate=(
-                "Spot: %{x:,.2f}<br>"
-                + leg_column
-                + ": ₹%{y:,.0f}"
-                + "<extra></extra>"
-            )
-        )
-    )
-
-# ------------------------------------------------------------
-# Net payoff at selected date/time — thick prominent line
-# ------------------------------------------------------------
-
-fig_final.add_trace(
-    go.Scatter(
-        x=payoff_comparison_df["Spot"],
-        y=payoff_comparison_df[
-            "Selected Date/Time P/L"
-        ],
-        mode="lines",
-        name="Net Payoff — Selected Date/Time",
-        line=dict(
-            width=5
-        ),
-        hovertemplate=(
-            "Spot: %{x:,.2f}<br>"
-            "Net selected-time P/L: ₹%{y:,.0f}"
-            "<extra></extra>"
-        )
-    )
-)
-
-# ------------------------------------------------------------
-# Net expiry payoff — dashed comparison line
-# ------------------------------------------------------------
-
-fig_final.add_trace(
-    go.Scatter(
-        x=payoff_comparison_df["Spot"],
-        y=payoff_comparison_df["Expiry P/L"],
-        mode="lines",
-        name="Net Payoff — Expiry",
-        line=dict(
-            width=3,
-            dash="dash"
-        ),
-        hovertemplate=(
-            "Spot: %{x:,.2f}<br>"
-            "Net expiry P/L: ₹%{y:,.0f}"
-            "<extra></extra>"
-        )
-    )
-)
-
-# Zero-profit line
-fig_final.add_hline(
-    y=0,
+fig_payoff.add_vline(
+    x=spot_now,
     line_dash="dash",
-    annotation_text="Zero P/L"
+    annotation_text="Spot"
 )
 
-# Current spot line
-fig_final.add_vline(
-    x=float(spot_now),
-    line_dash="dot",
-    annotation_text="Current Spot"
+fig_payoff.update_layout(
+    height=450,
+    xaxis_title="Spot",
+    yaxis_title="Profit / Loss ₹"
 )
 
-# Expiry break-even lines
-for break_even in break_even_points:
-    fig_final.add_vline(
-        x=float(break_even),
-        line_dash="dot",
-        annotation_text=f"BE {break_even:,.0f}"
-    )
+st.plotly_chart(fig_payoff, width="stretch")
 
-fig_final.update_layout(
-    title=(
-        "Individual Leg Behaviour and "
-        "Net Strategy Payoff"
-    ),
-    height=550,
-    xaxis_title="NIFTY Spot",
-    yaxis_title="Profit / Loss ₹",
-    hovermode="x unified",
-    legend_title_text=""
-)
-
-st.plotly_chart(
-    fig_final,
-    use_container_width=True
-)
 
