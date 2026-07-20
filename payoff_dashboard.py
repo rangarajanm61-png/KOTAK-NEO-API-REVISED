@@ -1284,9 +1284,14 @@ for price in scenario_price_range:
 
     total_expiry_payoff = 0.0
 
-    for leg in legs:
+    expiry_row = {
+        "Spot": float(price)
+    }
+
+    for leg_number, leg in enumerate(legs, start=1):
 
         strike = float(leg["strike"])
+
         entry_price = float(
             leg.get(
                 "entry",
@@ -1297,11 +1302,15 @@ for price in scenario_price_range:
         lots = int(leg.get("lots", 1))
         quantity = lots * LOT_SIZE
 
-        cepe = str(leg["cepe"]).upper()
-        buy_sell = str(leg["buy_sell"]).upper()
+        option_type = str(
+            leg.get("cepe", "CE")
+        ).upper()
 
-        # Intrinsic value at expiry
-        if cepe == "CE":
+        buy_sell = str(
+            leg.get("buy_sell", leg.get("side", "BUY"))
+        ).upper()
+
+        if option_type == "CE":
             intrinsic_value = max(float(price) - strike, 0.0)
         else:
             intrinsic_value = max(strike - float(price), 0.0)
@@ -1316,12 +1325,18 @@ for price in scenario_price_range:
                 entry_price - intrinsic_value
             ) * quantity
 
+        expiry_row[
+            f"Leg {leg_number} Expiry P/L"
+        ] = round(leg_expiry_payoff, 2)
+
         total_expiry_payoff += leg_expiry_payoff
 
-    expiry_rows.append({
-        "Spot": float(price),
-        "Expiry P/L": round(total_expiry_payoff, 2)
-    })
+    expiry_row["Expiry P/L"] = round(
+        total_expiry_payoff,
+        2
+    )
+
+    expiry_rows.append(expiry_row)
 
 expiry_df = pd.DataFrame(expiry_rows)
 
@@ -1329,11 +1344,30 @@ expiry_df = pd.DataFrame(expiry_rows)
 # MERGE BOTH PAYOFF CALCULATIONS
 # ============================================================
 
+selected_leg_columns = [
+    column
+    for column in scenario_df.columns
+    if column.startswith("Leg ")
+    and "Expiry" not in column
+    and column != "Selected Date/Time P/L"
+]
+
+expiry_leg_columns = [
+    f"Leg {leg_number} Expiry P/L"
+    for leg_number in range(1, len(legs) + 1)
+]
+
 payoff_comparison_df = pd.merge(
     scenario_df[
-        ["Spot", "Selected Date/Time P/L"]
+        ["Spot"]
+        + selected_leg_columns
+        + ["Selected Date/Time P/L"]
     ],
-    expiry_df,
+    expiry_df[
+        ["Spot"]
+        + expiry_leg_columns
+        + ["Expiry P/L"]
+    ],
     on="Spot",
     how="inner"
 )
@@ -1397,8 +1431,42 @@ for row_number in range(
 break_even_points = list(
     dict.fromkeys(break_even_points)
 )
+# selected time break even ponts
 
+selected_break_even_points = []
 
+for row_number in range(1, len(payoff_comparison_df)):
+
+    previous_row = payoff_comparison_df.iloc[row_number - 1]
+    current_row = payoff_comparison_df.iloc[row_number]
+
+    previous_spot = float(previous_row["Spot"])
+    current_spot = float(current_row["Spot"])
+
+    previous_pl = float(
+        previous_row["Selected Date/Time P/L"]
+    )
+    current_pl = float(
+        current_row["Selected Date/Time P/L"]
+    )
+
+    if previous_pl == 0:
+        selected_break_even_points.append(previous_spot)
+
+    elif previous_pl * current_pl < 0:
+        break_even = previous_spot + (
+            (0.0 - previous_pl)
+            * (current_spot - previous_spot)
+            / (current_pl - previous_pl)
+        )
+
+        selected_break_even_points.append(
+            round(break_even, 2)
+        )
+
+selected_break_even_points = list(
+    dict.fromkeys(selected_break_even_points)
+)
 # ============================================================
 # SUMMARY METRICS
 # ============================================================
@@ -1468,15 +1536,31 @@ summary_col4.metric(
     delta=f"@ NIFTY {expiry_max_loss_spot:,.0f}"
 )
 
-
-if break_even_points:
-    break_even_text = ", ".join(
-        f"{point:,.2f}"
-        for point in break_even_points
+if selected_break_even_points:
+    selected_be_text = ", ".join(
+        f"{value:,.2f}"
+        for value in selected_break_even_points
     )
 
     st.info(
-        f"Expiry Break-even Point(s): {break_even_text}"
+        f"Selected-Time Break-even Point(s): "
+        f"{selected_be_text}"
+    )
+else:
+    st.info(
+        "No selected-time break-even point is present "
+        "within the selected spot range."
+    )
+
+if break_even_points:
+    expiry_be_text = ", ".join(
+        f"{value:,.2f}"
+        for value in break_even_points
+    )
+
+    st.info(
+        f"Expiry Break-even Point(s): "
+        f"{expiry_be_text}"
     )
 else:
     st.info(
@@ -1484,47 +1568,6 @@ else:
         "within the selected spot range."
     )
 
-# # ============================================================
-# # INDIVIDUAL LEG IV SUMMARY
-# # ============================================================
-
-# leg_iv_rows = []
-
-# for leg_number, leg in enumerate(legs, start=1):
-
-#     leg_iv = float(
-#         leg.get(
-#             "scenario_iv",
-#             leg.get(
-#                 "iv_used",
-#                 leg.get("iv", 0.0)
-#             )
-#         )
-#     )
-
-#     # Convert decimal IV such as 0.12 into percentage 12.00
-#     if 0 < leg_iv <= 1.0:
-#         leg_iv_percent = leg_iv * 100.0
-#     else:
-#         leg_iv_percent = leg_iv
-
-#     leg_iv_rows.append({
-#         "Leg": leg_number,
-#         "Buy/Sell": leg.get("buy_sell", ""),
-#         "CE/PE": leg.get("cepe", ""),
-#         "Strike": int(float(leg.get("strike", 0))),
-#         "IV Used (%)": round(leg_iv_percent, 2)
-#     })
-
-# leg_iv_df = pd.DataFrame(leg_iv_rows)
-
-# st.markdown("### Individual Leg IV Used")
-
-# st.dataframe(
-#     leg_iv_df,
-#     width="stretch",
-#     hide_index=True
-# )
 # ============================================================
 # PAYOFF TABLE BEFORE CHART
 # ============================================================
@@ -1537,29 +1580,47 @@ display_payoff_df["Spot"] = display_payoff_df[
     "Spot"
 ].map(lambda value: f"{value:,.2f}")
 
-display_payoff_df[
-    "Selected Date/Time P/L"
-] = display_payoff_df[
-    "Selected Date/Time P/L"
-].map(lambda value: f"₹{value:,.0f}")
+payoff_value_columns = [
+    column
+    for column in display_payoff_df.columns
+    if column != "Spot"
+]
 
-display_payoff_df[
-    "Expiry P/L"
-] = display_payoff_df[
-    "Expiry P/L"
-].map(lambda value: f"₹{value:,.0f}")
+for column in payoff_value_columns:
+    display_payoff_df[column] = pd.to_numeric(
+        display_payoff_df[column],
+        errors="coerce"
+    ).fillna(0.0).map(
+        lambda value: f"₹{value:,.0f}"
+    )
+
+# --------------------------------------------------------
+# Highlight Selected Date/Time P/L and Expiry P/L
+# --------------------------------------------------------
+def highlight_payoff(value):
+    try:
+        value = float(str(value).replace("₹", "").replace(",", ""))
+    except:
+        return ""
+
+    if value > 0:
+        return "color: lime; font-weight:bold;"
+    elif value < 0:
+        return "color: red; font-weight:bold;"
+    else:
+        return "font-weight:bold;"
+
+styled_df = display_payoff_df.style.map(
+    highlight_payoff,
+    subset=["Selected Date/Time P/L", "Expiry P/L"]
+)
 
 st.dataframe(
-    display_payoff_df,
+    styled_df,
     use_container_width=True,
     hide_index=True,
     height=420
 )
-
-
-# ============================================================
-# COMBINED PAYOFF CHART
-# ============================================================
 
 # ============================================================
 # FINAL CHART:

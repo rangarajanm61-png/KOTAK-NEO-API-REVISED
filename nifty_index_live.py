@@ -72,7 +72,7 @@ client.subscribe(
             "exchange_segment": "nse_cm"
         }
     ],
-    isIndex=True,
+    isIndex=False,
     isDepth=False
 )
 
