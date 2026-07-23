@@ -1,4 +1,4 @@
-from streamlit_autorefresh import st_autorefresh
+# from streamlit_autorefresh import st_autorefresh
 from st_aggrid import AgGrid, GridOptionsBuilder
 import streamlit as st
 import pandas as pd
@@ -57,25 +57,11 @@ div[data-testid="stMetric"] {
 
 @st.fragment(run_every="30s")
 def refresh_dashboard():
-    st.write(
-        "Dashboard rerun:",
-        datetime.now(IST).strftime("%H:%M:%S")
-    )
-    placeholder = st.empty()
-
-    # temporary storage
-    if "data" not in st.session_state:
-        st.session_state.data = []
-
-    # Read NIFTY spot from option_chain.csv Spot column first
+    
     try:
         oc = pd.read_csv("option_chain.csv")
         import os, time
-        # st.write("option_chain.csv modified:", time.ctime(os.path.getmtime("option_chain.csv")))
-        st.write("Option_chain.csv rows:", len(oc))
-            
-        option_df = oc.copy()
-
+        
         # ---------- SAFE COLUMN BLOCK : avoid KeyError ----------
 
         required_cols = [
@@ -114,13 +100,12 @@ def refresh_dashboard():
         st.error(f"Error reading option_chain.csv: {e}")
         st.stop()    
     try:
-        if "Spot" in option_df.columns:
-            spot_series = pd.to_numeric(option_df["Spot"], errors="coerce").dropna()
-            nifty_spot = float(spot_series.iloc[-1]) if not spot_series.empty else 0
-        else:
-            nifty_spot = 0
+        with open("nifty_spot_live.txt", "r") as spot_file:
+            nifty_spot = float(
+                spot_file.read().strip()
+            )
     except Exception:
-        nifty_spot = 0
+        nifty_spot = 0.0
 
     # -------- Max Pain from main.py --------
     try:
@@ -154,331 +139,347 @@ def refresh_dashboard():
     total_ce_oi_change = option_df["CE OI Change"].sum()
     total_pe_oi_change = option_df["PE OI Change"].sum()
     overall_oi_pcr_change = round(total_pe_oi_change / total_ce_oi_change, 2) if total_ce_oi_change != 0 else 0
+   
+    st.markdown("### NIFTY Option Dashboard")
+    st.caption(f"Date : {datetime.now(IST).strftime('%d-%b-%Y')}")
+    
+    if "Expiry" in option_df.columns:
+        expiry_list = sorted(option_df["Expiry"].dropna().unique())
+    else:
+        expiry_list = ["Current Expiry"]
 
-    with placeholder.container():
+    title_col, expiry_col = st.columns([8,2])
 
+    with expiry_col:
+        selected_expiry = st.selectbox(
+            "Expiry",
+            expiry_list,
+            label_visibility="collapsed"
+        )
+
+    if "Expiry" not in option_df.columns:
+        option_df["Expiry"] = selected_expiry
+
+    option_df = option_df[option_df["Expiry"] == selected_expiry]
+    full_df = pd.read_csv("option_chain.csv")
+
+    if "Expiry" not in full_df.columns:
+        full_df["Expiry"] = selected_expiry
+
+    full_df = full_df[full_df["Expiry"] == selected_expiry].copy()
+
+    try:
+        hist_df = pd.read_csv("chart_history.csv")
         
-        st.markdown("### NIFTY Option Dashboard")
-        st.caption(f"Date : {datetime.now(IST).strftime('%d-%b-%Y')}")
-        
-        if "Expiry" in option_df.columns:
-            expiry_list = sorted(option_df["Expiry"].dropna().unique())
-        else:
-            expiry_list = ["Current Expiry"]
+    except:
+        hist_df = pd.DataFrame()
+    try:
+        summary_csv_df = pd.read_csv("summary.csv")
+        summary_csv_df.columns = summary_csv_df.columns.str.strip()
 
-        title_col, expiry_col = st.columns([8,2])
+    except Exception as e:
+        st.warning(f"summary.csv not ready: {e}")
+        summary_csv_df = pd.DataFrame()
 
-        with expiry_col:
-            selected_expiry = st.selectbox(
-                "Expiry",
-                expiry_list,
-                label_visibility="collapsed"
-            )
+    if not summary_csv_df.empty:
+        latest_summary = summary_csv_df.iloc[-1]
 
-        if "Expiry" not in option_df.columns:
-            option_df["Expiry"] = selected_expiry
+        total_ce_oi = float(latest_summary["CE OI"])
+        total_pe_oi = float(latest_summary["PE OI"])
+        # total_ce_oi_change = float(latest_summary["CE OI Change"])
+        # total_pe_oi_change = float(latest_summary["PE OI Change"])
+        oi_pcr = float(latest_summary["OI PCR"])
+        overall_oi_pcr_change = float(latest_summary["PCR Change"])
+        vol_pcr = float(latest_summary["Volume PCR"])
+        selected_expiry = str(latest_summary["Expiry"])
+        summary_data_time = str(latest_summary["Data Time"])
 
-        option_df = option_df[option_df["Expiry"] == selected_expiry]
-        full_df = pd.read_csv("option_chain.csv")
+    summary_df = pd.DataFrame([{
+        "Spot": round(nifty_spot, 2),
+        "CE OI (L)": f"{total_ce_oi/100000:.1f}",
+        "PE OI (L)": f"{total_pe_oi/100000:.1f}",
+        # "CE OI Δ (L)": f"{total_ce_oi_change/100000:.1f}",
+        # "PE OI Δ (L)": f"{total_pe_oi_change/100000:.1f}",
+        "OI PCR": f"{oi_pcr:.2f}",
+        "PCR Δ": f"{overall_oi_pcr_change:.2f}",
+        "Vol PCR": f"{vol_pcr:.2f}",
+        "Max Pain": int(hist_df["Max Pain"].iloc[-1])
+            if not hist_df.empty and "Max Pain" in hist_df.columns else 0,
 
-        if "Expiry" not in full_df.columns:
-            full_df["Expiry"] = selected_expiry
-
-        full_df = full_df[full_df["Expiry"] == selected_expiry].copy()
-
-        try:
-            hist_df = pd.read_csv("chart_history.csv")
-            
-        except:
-            hist_df = pd.DataFrame()
-
-        summary_df = pd.DataFrame([{
-            "Spot": round(nifty_spot, 2),
-            "CE OI (L)": f"{total_ce_oi/100000:.1f}",
-            "PE OI (L)": f"{total_pe_oi/100000:.1f}",
-            "CE OI Δ (L)": f"{total_ce_oi_change/100000:.1f}",
-            "PE OI Δ (L)": f"{total_pe_oi_change/100000:.1f}",
-            "OI PCR": f"{oi_pcr:.2f}",
-            "PCR Δ": f"{overall_oi_pcr_change:.2f}",
-            "Vol PCR": f"{vol_pcr:.2f}",
-            "Max Pain": int(hist_df["Max Pain"].iloc[-1]) if not hist_df.empty and "Max Pain" in hist_df.columns else int(max_pain),
-            "Expiry": selected_expiry,
-            "Data Time": hist_df["Time"].iloc[-1] if not hist_df.empty else "",
-            "Dashboard Time": datetime.now(IST).strftime("%H:%M:%S")
+        "Expiry": selected_expiry,
+        "Data Time": summary_data_time,
+        "Dashboard Time": datetime.now(IST).strftime("%H:%M:%S")
         }])
-        st.dataframe(
-                summary_df,
-                width="stretch",
-                hide_index=True
-            )
+    
+    st.dataframe(
+            summary_df,
+            width="stretch",
+            hide_index=True
+        )
 
-        # Strike-wise PCR
-        option_df["OI PCR"] = option_df.apply(
-                lambda r: round(r["PE OI"] / r["CE OI"], 2) if r["CE OI"] != 0 else 0,
-                axis=1
-            )
+    # Strike-wise PCR
+    option_df["OI PCR"] = option_df.apply(
+            lambda r: round(r["PE OI"] / r["CE OI"], 2) if r["CE OI"] != 0 else 0,
+            axis=1
+        )
 
-        option_df["PE/CE Vol Ratio"] = option_df.apply(
-                lambda r: round(r["PE Volume"] / r["CE Volume"], 2) if r["CE Volume"] != 0 else 0,
-                axis=1
-            )
+    option_df["PE/CE Vol Ratio"] = option_df.apply(
+            lambda r: round(r["PE Volume"] / r["CE Volume"], 2) if r["CE Volume"] != 0 else 0,
+            axis=1
+        )
 
-        if "CE OI" not in option_df.columns:
-            option_df["CE OI"] = 0
+    if "CE OI" not in option_df.columns:
+        option_df["CE OI"] = 0
 
-        if "PE OI" not in option_df.columns:
-            option_df["PE OI"] = 0
+    if "PE OI" not in option_df.columns:
+        option_df["PE OI"] = 0
 
-        if "CE Volume" not in option_df.columns:
-            option_df["CE Volume"] = 0
+    if "CE Volume" not in option_df.columns:
+        option_df["CE Volume"] = 0
 
-        if "PE Volume" not in option_df.columns:
-            option_df["PE Volume"] = 0
-
-            pcr_df = option_df.copy()
-
-        if "Expiry" not in option_df.columns:
-            option_df["Expiry"] = "Current Expiry"
-
-        option_df = option_df.rename(columns={
-            "pExpiryDate": "Expiry",
-            "CE_LTP": "CE LTP",
-            "PE_LTP": "PE LTP"
-        })
-        if "CE OI" not in option_df.columns:
-            option_df["CE OI"] = 0
-        if "PE OI" not in option_df.columns:
-            option_df["PE OI"] = 0
-        if "CE Volume" not in option_df.columns:
-            option_df["CE Volume"] = 0
-        if "PE Volume" not in option_df.columns:
-            option_df["PE Volume"] = 0
+    if "PE Volume" not in option_df.columns:
+        option_df["PE Volume"] = 0
 
         pcr_df = option_df.copy()
 
-        try:
-            summary_df = pd.read_csv("summary.csv")
-        except Exception as e:
-            st.warning(f"summary.csv not ready: {e}")
-            summary_df = pd.DataFrame()
+    if "Expiry" not in option_df.columns:
+        option_df["Expiry"] = "Current Expiry"
 
-        st.subheader("Table 1 - Price / OI / PCR")
+    option_df = option_df.rename(columns={
+        "pExpiryDate": "Expiry",
+        "CE_LTP": "CE LTP",
+        "PE_LTP": "PE LTP"
+    })
+    if "CE OI" not in option_df.columns:
+        option_df["CE OI"] = 0
+    if "PE OI" not in option_df.columns:
+        option_df["PE OI"] = 0
+    if "CE Volume" not in option_df.columns:
+        option_df["CE Volume"] = 0
+    if "PE Volume" not in option_df.columns:
+        option_df["PE Volume"] = 0
 
-        table1_cols = [
-            "Strike",
-            "CE LTP",
-            "CE OI",
-            "CE Volume",
-            "CE Price Change",
-            "CE OI Change",
-            "CE OI Change %",
-            "PE LTP",
-            "PE OI",
-            "PE Volume",
-            "PE Price Change",
-            "PE OI Change",
-            "PE OI Change %",
-            "OI PCR",
-            "OI PCR Change",
-            "PE/CE Vol Ratio",
-            "Status",
-        ]
-        display_df = pcr_df[table1_cols].copy()
+    pcr_df = option_df.copy()
 
-        display_df = display_df.rename(columns={
-            "CE Volume": "CE Vol",
-            "PE Volume": "PE Vol",
-            "CE Price Change": "CE Price Chng",
-            "PE Price Change": "PE Price Chng",
-            "CE OI Change": "CE OI Chng",
-            "PE OI Change": "PE OI Chng",
-            "CE OI Change %": "CE OI Chng %",
-            "PE OI Change %": "PE OI Chng %",
-            "OI PCR Change": "OI PCR Chng",
-            "PE/CE Vol Ratio": "PE/CE Vol",
-        })
+           
+    st.subheader("Table 1 - Price / OI / PCR")
 
-    # Keep only columns that exist
+    table1_cols = [
+        "Strike",
+        "CE LTP",
+        "CE OI",
+        "CE Volume",
+        "CE Price Change",
+        "CE OI Change",
+        "CE OI Change %",
+        "PE LTP",
+        "PE OI",
+        "PE Volume",
+        "PE Price Change",
+        "PE OI Change",
+        "PE OI Change %",
+        "OI PCR",
+        "OI PCR Change",
+        "PE/CE Vol Ratio",
+        "Status",
+    ]
+    display_df = pcr_df[table1_cols].copy()
 
-        st.dataframe(display_df, width="stretch", height=620)
+    display_df = display_df.rename(columns={
+        "CE Volume": "CE Vol",
+        "PE Volume": "PE Vol",
+        "CE Price Change": "CE Price Chng",
+        "PE Price Change": "PE Price Chng",
+        "CE OI Change": "CE OI Chng",
+        "PE OI Change": "PE OI Chng",
+        "CE OI Change %": "CE OI Chng %",
+        "PE OI Change %": "PE OI Chng %",
+        "OI PCR Change": "OI PCR Chng",
+        "PE/CE Vol Ratio": "PE/CE Vol",
+    })
 
-        # ---------------- LIVE CHARTS ----------------
-        st.markdown("<br><br><br>", unsafe_allow_html=True)
+# Keep only columns that exist
+
+    st.dataframe(display_df, width="stretch", height=620)
+
+    # ---------------- LIVE CHARTS ----------------
+    st.markdown("<br><br><br>", unsafe_allow_html=True)
 
 
-        try:
-            hist_df = pd.read_csv("chart_history.csv")
-            
-            if "Date" not in hist_df.columns:
-                hist_df["Date"] = datetime.now(IST).strftime("%d-%b-%Y")
-
-            hist_df["Date"] = hist_df["Date"].fillna(datetime.now(IST).strftime("%d-%b-%Y"))
-
-            hist_df = hist_df.dropna(subset=["Time"])
-            hist_df = hist_df[hist_df["Time"].astype(str) != "Ellipsis"]
-            hist_df = hist_df.tail(500)
-            hist_df["Spot"] = pd.to_numeric(hist_df["Spot"], errors="coerce")
-            hist_df["OI PCR"] = pd.to_numeric(hist_df["OI PCR"], errors="coerce")
-            hist_df["Vol PCR"] = pd.to_numeric(hist_df["Vol PCR"], errors="coerce")
-            # st.write("Rows in history:", len(hist_df))
-            # st.dataframe(hist_df.tail(5))
-
-            st.markdown("### Live Combined Chart: Spot + PCR")
-            
-            combo_cols = ["Spot", "Max Pain", "OI PCR", "Vol PCR", "OI PCR Change"]
-
-            combo_df = hist_df[["Time"] + combo_cols].copy()
-
-            for c in combo_cols:
-                combo_df[c] = pd.to_numeric(combo_df[c], errors="coerce").fillna(0)
-
-            fig = go.Figure()
-
-            fig.add_trace(go.Scatter(
-                x=combo_df["Time"],
-                y=combo_df["Spot"],
-                mode="lines",
-                name="NIFTY Spot",
-                line=dict(color="deepskyblue", width=3),
-                yaxis="y1"
-            ))
-
-            fig.add_trace(go.Scatter(
-            x=combo_df["Time"],
-            y=combo_df["Max Pain"],
-            mode="lines",
-            name="Max Pain",
-            line=dict(color="gold", width=3, dash="dash"),
-            yaxis="y1"
-            ))
-
-            fig.add_trace(go.Scatter(
-                x=combo_df["Time"],
-                y=combo_df["OI PCR"],
-                mode="lines",
-                name="OI PCR",
-                line=dict(color="red", width=2),
-                yaxis="y2"
-            ))
-
-            fig.add_trace(go.Scatter(
-                x=combo_df["Time"],
-                y=combo_df["Vol PCR"],
-                mode="lines",
-                name="Vol PCR",
-                line=dict(color="orange", width=2),
-                yaxis="y2"
-            ))
-
-            fig.add_trace(go.Scatter(
-                x=combo_df["Time"],
-                y=combo_df["OI PCR Change"],
-                mode="lines",
-                name="OI PCR Change",
-                line=dict(color="lime", width=2),
-                yaxis="y2"
-            ))
-
-            fig.update_layout(
-                height=500,
-                xaxis=dict(title="Time"),
-                yaxis=dict(
-                    title="NIFTY Spot",
-                    side="left"
-                ),
-                # 
-                yaxis2=dict(
-                title="PCR",
-                overlaying="y",
-                side="right",
-                range=[-0.2, 2.0]
-                ),
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    xanchor="left",
-                    x=0
-                )
-            )
-
-            st.plotly_chart(fig, width="stretch")
-            
-        except Exception as e:
-            st.warning(f"Charts not ready: {e}")
+    try:
+        hist_df = pd.read_csv("chart_history.csv")
         
-            greeks_range = 2000
+        if "Date" not in hist_df.columns:
+            hist_df["Date"] = datetime.now(IST).strftime("%d-%b-%Y")
 
-            table2_df = option_df[
-                (option_df["Strike"] >= nifty_spot - greeks_range) &
-                (option_df["Strike"] <= nifty_spot + greeks_range)
-            ].copy()
+        hist_df["Date"] = hist_df["Date"].fillna(datetime.now(IST).strftime("%d-%b-%Y"))
 
-        st.subheader("TABLE 2 - OPTION GREEKS (ATM ±500)")
+        hist_df = hist_df.dropna(subset=["Time"])
+        hist_df = hist_df[hist_df["Time"].astype(str) != "Ellipsis"]
+        hist_df = hist_df.tail(500)
+        hist_df["Spot"] = pd.to_numeric(hist_df["Spot"], errors="coerce")
+        hist_df["OI PCR"] = pd.to_numeric(hist_df["OI PCR"], errors="coerce")
+        hist_df["Vol PCR"] = pd.to_numeric(hist_df["Vol PCR"], errors="coerce")
+        # st.write("Rows in history:", len(hist_df))
+        # st.dataframe(hist_df.tail(5))
 
-        table2_cols = [
-            "Strike",
-            "CE LTP",
-            "CE_IV",
-            "PE LTP",
-            "PE_IV",
-            "Spot",
-            "CE Delta",
-            "CE Gamma",
-            "CE Theta",
-            "CE Decay",
-            "CE Vega",
-            "PE Delta",
-            "PE Gamma",
-            "PE Theta",
-            "PE Decay",
-            "PE Vega",
-        ]
-        spot = float(pcr_df["Spot"].iloc[0])
-        atm = round(spot / 50) * 50
+        st.markdown("### Live Combined Chart: Spot + PCR")
+        
+        combo_cols = ["Spot", "Max Pain", "OI PCR", "Vol PCR", "OI PCR Change"]
 
-        pcr_df = pcr_df[
-            (pcr_df["Strike"] >= atm - 500) &
-            (pcr_df["Strike"] <= atm + 500)
-        ]
-        table2_cols = [c for c in table2_cols if c in pcr_df.columns]
+        combo_df = hist_df[["Time"] + combo_cols].copy()
+        combo_df = combo_df.tail(60)
 
-        st.dataframe(
-            pcr_df[table2_cols],
-            width="stretch",
-            height=850
+        for c in combo_cols:
+            combo_df[c] = pd.to_numeric(combo_df[c], errors="coerce").fillna(0)
+
+        fig = go.Figure()
+
+        fig.add_trace(go.Scatter(
+            x=combo_df["Time"],
+            y=combo_df["Spot"],
+            mode="lines",
+            name="NIFTY Spot",
+            line=dict(color="deepskyblue", width=3),
+            yaxis="y1"
+        ))
+
+        fig.add_trace(go.Scatter(
+        x=combo_df["Time"],
+        y=combo_df["Max Pain"],
+        mode="lines",
+        name="Max Pain",
+        line=dict(color="gold", width=3, dash="dash"),
+        yaxis="y1"
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=combo_df["Time"],
+            y=combo_df["OI PCR"],
+            mode="lines",
+            name="OI PCR",
+            line=dict(color="red", width=2),
+            yaxis="y2"
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=combo_df["Time"],
+            y=combo_df["Vol PCR"],
+            mode="lines",
+            name="Vol PCR",
+            line=dict(color="orange", width=2),
+            yaxis="y2"
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=combo_df["Time"],
+            y=combo_df["OI PCR Change"],
+            mode="lines",
+            name="OI PCR Change",
+            line=dict(color="lime", width=2),
+            yaxis="y2"
+        ))
+
+        fig.update_layout(
+            height=500,
+            xaxis=dict(title="Time"),
+            yaxis=dict(
+                title="NIFTY Spot",
+                side="left"
+            ),
+            # 
+            yaxis2=dict(
+            title="PCR",
+            overlaying="y",
+            side="right",
+            range=[-0.2, 2.0]
+            ),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="left",
+                x=0
+            )
         )
-        total_ce_vol = pd.to_numeric(pcr_df["CE Volume"], errors="coerce").fillna(0).sum()
-        total_pe_vol = pd.to_numeric(pcr_df["PE Volume"], errors="coerce").fillna(0).sum()
 
-        oi_pcr = round(total_pe_oi / total_ce_oi, 2) if total_ce_oi > 0 else 0
-        vol_pcr = round(total_pe_vol / total_ce_vol, 2) if total_ce_vol > 0 else 0
+        st.plotly_chart(fig, width="stretch")
+        
+    except Exception as e:
+        st.warning(f"Charts not ready: {e}")
+    
+        greeks_range = 2000
 
-        st.markdown("### Trading Day History")
+        table2_df = option_df[
+            (option_df["Strike"] >= nifty_spot - greeks_range) &
+            (option_df["Strike"] <= nifty_spot + greeks_range)
+        ].copy()
 
-        today = datetime.now(IST).strftime("%d-%b-%Y")
+    st.subheader("TABLE 2 - OPTION GREEKS (ATM ±500)")
 
-        if "Date" in hist_df.columns:
-            hist_df = hist_df[hist_df["Date"] == today]
+    table2_cols = [
+        "Strike",
+        "CE LTP",
+        "CE_IV",
+        "PE LTP",
+        "PE_IV",
+        "Spot",
+        "CE Delta",
+        "CE Gamma",
+        "CE Theta",
+        "CE Decay",
+        "CE Vega",
+        "PE Delta",
+        "PE Gamma",
+        "PE Theta",
+        "PE Decay",
+        "PE Vega",
+    ]
+    spot = nifty_spot
+    atm = round(spot / 50) * 50
 
-        if not hist_df.empty:
+    pcr_df = pcr_df[
+        (pcr_df["Strike"] >= atm - 500) &
+        (pcr_df["Strike"] <= atm + 500)
+    ]
+    table2_cols = [c for c in table2_cols if c in pcr_df.columns]
 
-            history_cols = [
-                "Date",
-                "Time",
-                "Spot",
-                "OI PCR",
-                "Vol PCR",
-                "OI PCR Change",
-                "CE OI Change",
-                "PE OI Change",
-                "Max Pain"
-            ]
+    st.dataframe(
+        pcr_df[table2_cols],
+        width="stretch",
+        height=850
+    )
+    total_ce_vol = pd.to_numeric(pcr_df["CE Volume"], errors="coerce").fillna(0).sum()
+    total_pe_vol = pd.to_numeric(pcr_df["PE Volume"], errors="coerce").fillna(0).sum()
 
-            history_cols = [c for c in history_cols if c in hist_df.columns]
-            hist_display = hist_df[history_cols].tail(100)
+    oi_pcr = round(total_pe_oi / total_ce_oi, 2) if total_ce_oi > 0 else 0
+    vol_pcr = round(total_pe_vol / total_ce_vol, 2) if total_ce_vol > 0 else 0
 
-            st.dataframe(hist_display, width="stretch", height=300)
+    st.markdown("### Trading Day History")
+
+    today = datetime.now(IST).strftime("%d-%b-%Y")
+
+    if "Date" in hist_df.columns:
+        hist_df = hist_df[hist_df["Date"] == today]
+
+    if not hist_df.empty:
+
+        history_cols = [
+            "Date",
+            "Time",
+            "Spot",
+            "OI PCR",
+            "Vol PCR",
+            "OI PCR Change",
+            "CE OI Change",
+            "PE OI Change",
+            "Max Pain"
+        ]
+
+        history_cols = [c for c in history_cols if c in hist_df.columns]
+        hist_display = hist_df[history_cols].tail(100)
+
+        st.dataframe(hist_display, width="stretch", height=300)
 
 refresh_dashboard()
 

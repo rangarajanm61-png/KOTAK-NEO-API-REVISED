@@ -3,7 +3,11 @@ from dotenv import load_dotenv
 import os
 import time
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from datetime import time as dt_time
+IST = ZoneInfo("Asia/Kolkata")
+from pathlib import Path
+from oi_baseline_manager import morning_baseline_check
 from option_chain import (
     calculate_pcr,
     expiry_summary,
@@ -62,7 +66,7 @@ csv_files_to_refresh = [
 
 marker = ".last_reset"
 
-now = datetime.now()
+now = datetime.now(IST)
 today = now.strftime("%Y-%m-%d")
 
 if now.time() >= dt_time(9, 15):
@@ -131,35 +135,53 @@ expiry_list = sorted(option_df["pExpiryDate"].dropna().unique())
 
 EXPIRY_FILE = "selected_expiry.txt"
 
+# --------------------------------------------------
+# EXPIRY SELECTION
+# --------------------------------------------------
+
 use_launcher = input(
-    "Use expiry selected in live launcher? (Y/N): "
+    "\nUse expiry selected in Live Launcher? (Y/N): "
 ).strip().lower()
 
-if use_launcher == "y":
-    if not os.path.exists(EXPIRY_FILE):
-        print("selected_expiry.txt not found. Select expiry manually.")
-        use_launcher = "n"
-    else:
-        with open(EXPIRY_FILE, "r") as f:
-            selected_expiry = f.read().strip()
+selected_expiry = None
 
-        if selected_expiry not in expiry_list:
-            print(
-                f"Launcher expiry {selected_expiry} is not available "
-                "in the current Neo expiry list."
-            )
-            use_launcher = "n"
-        else:
-            print("Using Launcher Expiry =", selected_expiry)
+expiry_file = Path("selected_expiry.txt")
 
-if use_launcher != "y":
+launcher_expiry = ""
+
+if expiry_file.exists():
+    launcher_expiry = expiry_file.read_text(
+        encoding="utf-8"
+    ).strip()
+
+if (
+    use_launcher == "y"
+    and launcher_expiry
+    and launcher_expiry in expiry_list
+):
+
+    selected_expiry = launcher_expiry
+
+    print(
+        "Using Launcher Expiry :",
+        selected_expiry
+    )
+
+else:
+
     print("\nAVAILABLE EXPIRIES")
 
-    for i, expiry_date in enumerate(expiry_list, start=1):
+    for i, expiry_date in enumerate(
+        expiry_list,
+        start=1
+    ):
         print(f"{i}. {expiry_date}")
 
     while True:
-        expiry_input = input("Select Expiry Number: ").strip()
+
+        expiry_input = input(
+            "Select Expiry Number : "
+        ).strip()
 
         if not expiry_input.isdigit():
             print("Enter a valid number.")
@@ -171,17 +193,29 @@ if use_launcher != "y":
             selected_expiry = expiry_list[expiry_index]
             break
 
-        print(f"Enter a number from 1 to {len(expiry_list)}.")
+        print(
+            f"Enter a number from "
+            f"1 to {len(expiry_list)}."
+        )
 
-    print("Manually Selected Expiry =", selected_expiry)
+    print(
+        "Using Manual Expiry :",
+        selected_expiry
+    )
 
-print("Selected Expiry =", selected_expiry)
+print(
+    "Selected Expiry :",
+    selected_expiry
+)
 
 option_df = option_df[
-option_df["pExpiryDate"] == selected_expiry
+    option_df["pExpiryDate"] == selected_expiry
 ]
+
 option_df = option_df[
-option_df["pTrdSymbol"].astype(str).str.endswith(("CE", "PE"))
+    option_df["pTrdSymbol"]
+    .astype(str)
+    .str.endswith(("CE", "PE"))
 ].copy()
 
 option_df["Strike"] = (
@@ -189,10 +223,19 @@ option_df["Strike"] = (
     .str.extract(r"(\d{5})(?=CE|PE)")
 )
 
-# Remove rows where strike not found
-option_df = option_df.dropna(subset=["Strike"])
+# Remove rows where strike was not found
+option_df = option_df.dropna(
+    subset=["Strike"]
+)
 
-# Convert to integer
+# Safety check after all expiry/type/strike filtering
+if option_df.empty:
+    raise RuntimeError(
+        f"No valid CE/PE option contracts found "
+        f"for expiry {selected_expiry}"
+    )
+
+# Convert strike to integer
 option_df["Strike"] = option_df["Strike"].astype(int)
 
 option_cols = [
@@ -200,10 +243,66 @@ option_cols = [
     "pOptionType",
     "pTrdSymbol",
     "pExpiryDate",
-    "pSymbol"
+    "pSymbol",
 ]
+def update_closing_oi_now(option_chain):
+    closing_file = "option_chain_base_oi_closing.csv"
+    closing_marker = "option_chain_base_oi_closing_date.txt"
+
+    now_ist = datetime.now(timezone.utc) + timedelta(
+        hours=5,
+        minutes=30
+    )
+
+    date_now = now_ist.strftime("%Y-%m-%d")
+    time_now = now_ist.strftime("%H:%M:%S")
+
+    closing_df = option_chain[
+        ["Strike", "CE OI", "PE OI"]
+    ].copy()
+
+    closing_df.insert(0, "Date", date_now)
+    closing_df.insert(1, "Time", time_now)
+
+    closing_df.columns = [
+        "Date",
+        "Time",
+        "Strike",
+        "CE OI Open",
+        "PE OI Open",
+    ]
+
+    closing_df.to_csv(
+        closing_file,
+        index=False
+    )
+
+    with open(closing_marker, "w") as file:
+        file.write(date_now)
+
+    print(
+        f"Closing OI baseline updated: "
+        f"{date_now} {time_now}"
+    )
+
+    return True
+
+baseline_ok = morning_baseline_check()
+
+if not baseline_ok:
+    continue_main = input(
+        "Baseline maintenance not completed. "
+        "Continue main.py? (Y/N): "
+    ).strip().lower()
+
+    if continue_main != "y":
+        print("main.py stopped.")
+        raise SystemExit
+
+
 while True:
     cycle_start = time.time()
+    
     print("\nREFRESH START")
 
     # Find 24000 CE for selected expiry
@@ -212,7 +311,7 @@ while True:
         (option_df["pOptionType"] == "CE") &
         (option_df["pExpiryDate"] == selected_expiry)
     ]
-       
+    
     try:
         with open("nifty_spot_live.txt", "r") as f:
             spot = float(f.read().strip())
@@ -272,6 +371,33 @@ while True:
     print(f"OPTION QUOTE FETCH TIME = {fetch_end - cycle_start:.2f} sec")
 
     final_ltp_df = pd.DataFrame(ltp_rows)
+
+    if final_ltp_df.empty:
+        print("WARNING: No fresh option quotes received")
+        time.sleep(5)
+        continue
+
+    final_ltp_df["LTP"] = pd.to_numeric(
+        final_ltp_df["LTP"],
+        errors="coerce"
+    )
+
+    final_ltp_df = final_ltp_df[
+        final_ltp_df["LTP"] > 0
+    ].copy()
+
+    # Keep the latest quote for each strike and type
+    final_ltp_df = final_ltp_df.drop_duplicates(
+        subset=["Strike", "Type"],
+        keep="last"
+    )
+
+    # Arrange rows for further processing
+    final_ltp_df = final_ltp_df.sort_values(
+        ["Strike", "Type"],
+        ascending=[True, True]
+    ).reset_index(drop=True)
+
     final_ltp_df = final_ltp_df[final_ltp_df["LTP"] > 0].copy()
 
     final_ltp_df = final_ltp_df.sort_values(["Strike", "Type", "LTP"], ascending=[True, True, False])
@@ -392,8 +518,8 @@ while True:
     )
 
     # --------- STATIC OI BASELINE LOGIC ---------
-    import os
-    from datetime import datetime, timedelta
+    # import os
+    # from datetime import datetime, timedelta
 
     closing_file = "option_chain_base_oi_closing.csv"
     opening_file = "option_chain_base_oi_opening.csv"
@@ -632,26 +758,25 @@ while True:
     except Exception as e:
         print("Could not read latest spot:", e)
 
-    data_time = datetime.now().strftime("%H:%M:%S")
+    data_time = datetime.now(IST).strftime("%H:%M:%S")
 
     option_chain["Data Time"] = data_time
-    option_chain.to_csv("option_chain.csv", index=False)
+    option_chain.to_csv(
+        "option_chain.csv",
+        index=False
+    )
 
     summary_df = expiry_summary(option_chain)
     summary_df["Data Time"] = data_time
-    summary_df.to_csv("summary.csv", index=False)
+    summary_df.to_csv(
+        "summary.csv",
+        index=False
+    )
 
+    print("option_chain.csv updated")
     print("summary.csv updated")
 
-    # print(
-    #     option_chain[
-    #         ["Strike", "PE_TimeValue", "Trading_Bias"]
-    #     ]
-    #     .sort_values("PE_TimeValue", ascending=False)
-    #     .head(3)
-    #     .to_string(index=False)
-    # )
-    
+   
     # ================= MAIN OUTPUT TABLES =================
 
     # ---- Table 1: Price / OI / PCR ----
@@ -674,14 +799,14 @@ while True:
     "PE/CE Vol Ratio",
     "Expiry",
     "Spot",
-]
+    ]
     table2_cols = [
     "Strike",
     "CE_LTP", "PE_LTP", "Spot",
     "CE_IV", "PE_IV",
     "CE Delta", "CE Gamma", "CE Theta", "CE Decay", "CE Vega",
     "PE Delta", "PE Gamma", "PE Theta", "PE Decay", "PE Vega",
-]
+    ]
     table3_cols = [
     "Strike",
     "CE_LTP",
@@ -689,7 +814,7 @@ while True:
     "Status",
     "CE_TimeValue",
     "PE_TimeValue",
-]
+    ]
     table1_cols = [c for c in table1_cols if c in option_chain.columns]
     table2_cols = [c for c in table2_cols if c in option_chain.columns]
     table3_cols = [c for c in table3_cols if c in option_chain.columns]
@@ -716,12 +841,21 @@ while True:
 
         # Save latest data every refresh
 
-        option_chain["Data Time"] = datetime.now().strftime("%H:%M:%S")
+        option_chain["Data Time"] = datetime.now(IST).strftime("%H:%M:%S")
         option_chain.to_csv("option_chain.csv", index=False)
 
-        # ================= END MAIN OUTPUT TABLES =================
-        cycle_end = time.time()
-        print(f"CALCULATION + CSV TIME = {cycle_end - fetch_end:.2f} sec")
-        print(f"TOTAL MAIN CYCLE TIME = {cycle_end - cycle_start:.2f} sec")
-        print("Waiting 5 seconds...")
-        time.sleep(5)
+    # ================= END MAIN OUTPUT TABLES =================
+    cycle_end = time.time()
+
+    print(
+        f"CALCULATION + CSV TIME = "
+        f"{cycle_end - fetch_end:.2f} sec"
+    )
+
+    print(
+        f"TOTAL MAIN CYCLE TIME = "
+        f"{cycle_end - cycle_start:.2f} sec"
+    )
+
+    print("Waiting 5 seconds...")
+    time.sleep(5)

@@ -65,7 +65,8 @@ def wait_for_option_chain(timeout=90):
         if choice == "1":
             continue
         elif choice == "2":
-            restart_main()
+            print("Automatic restart disabled. Start main.py manually.")
+            return False
         else:
             return False
 
@@ -93,8 +94,11 @@ def restart_main():
     print("Restarting main.py...")
     env = os.environ.copy()
     env["LAUNCHER_MODE"] = "1"
-
-    main_process = subprocess.Popen(["python3", "main.py"], env=env)
+    
+    main_process = subprocess.Popen(
+        ["python3", "main.py"],
+        env=env
+    )
 
 
 print("=" * 55)
@@ -106,8 +110,6 @@ login_result = subprocess.run(["python3", "login_once.py"])
 if login_result.returncode != 0:
     print("❌ Login failed. Stop.")
     raise SystemExit
-
-print("\nSTEP 2 : SELECT EXPIRY")
 
 print("\nSTEP 2 : SELECT EXPIRY")
 
@@ -163,102 +165,24 @@ def show_file_time(label, file_name):
     else:
         print(f"{label} not found.")
 
-print("\nSTEP 3 : MORNING OI MAINTENANCE")
+print("\nSTEP 3 : START NIFTY SPOT")
+spot_process = subprocess.Popen(
+    ["python3", "nifty_index_live.py"]
+)
 
-ans = input("Refresh Closing OI from Neo now? (Y/N): ").strip().lower()
+print("STEP 3 COMPLETED: NIFTY spot started.")
 
-if ans == "y":
-    print("\nRefreshing Closing OI from Neo...")
+print("\nSTEP 4 : START MAIN")
 
-    env = os.environ.copy()
-    env["LAUNCHER_MODE"] = "1"
-    main_process = subprocess.Popen(["python3", "main.py"], env=env)
-
-    print("Waiting 60 seconds for main.py to create latest closing OI file...")
-    time.sleep(60)
-
-    if main_process.poll() is None:
-        main_process.terminate()
-        main_process.wait()
-    else:
-        print("✓ main.py finished normally.")
-
-    if os.path.exists(CLOSING_FILE):
-        print("✓ Closing OI file refreshed.")
-    else:
-        print("✗ Closing OI file not found after refresh.")
-else:
-    print("Existing Closing OI retained.")
-
-show_file_time("Closing OI file", CLOSING_FILE)
-
-ans2 = input("Update Opening Baseline from Closing file? (Y/N): ").strip().lower()
-
-if ans2 == "y":
-    print("\n⚠️ MANUAL EXPIRY CHECK")
-    print(f"Selected Expiry : {selected_expiry}")
-    print("Confirm closing file belongs to SAME expiry.")
-
-    confirm = input("Proceed with update? (Y/N): ").strip().lower()
-
-    if confirm == "y":
-        if os.path.exists(CLOSING_FILE):
-            shutil.copy(CLOSING_FILE, OPENING_FILE)
-            print("✓ Opening baseline updated.")
-        else:
-            print("✗ Closing file not found.")
-    else:
-        print("✗ Opening baseline update cancelled.")
-else:
-    print("Existing opening baseline retained.")
-
-show_file_time("Opening baseline file", OPENING_FILE)
-    
-# print("\nSTEP 4 : START LIVE FEED")
-# live_process = subprocess.Popen(["python3", "live_feed.py"])
-# print("✅ STEP 4 COMPLETED : live_feed.py started")
-
-print("\nSTEP 5 : START NIFTY SPOT")
-spot_process = subprocess.Popen(["python3", "nifty_index_live.py"])
-
-if not wait_for_spot():
-    print("❌ STEP 5 FAILED : NIFTY spot not received")
-    raise SystemExit
-
-print("✅ STEP 5 COMPLETED : NIFTY spot received")
-
-print("\nSTEP 6 : START MAIN")
 env = os.environ.copy()
 env["LAUNCHER_MODE"] = "1"
-main_process = subprocess.Popen(["python3", "main.py"], env=env)
 
-if not wait_for_option_chain():
-    print("❌ STEP 6 FAILED : option_chain.csv not updated")
-    raise SystemExit
+main_process = subprocess.Popen(
+    ["python3", "main.py"],
+    env=env
+)
 
-print("✅ STEP 6 COMPLETED : option_chain.csv updated")
-
-# print("\nSTEP 7 : START DASHBOARD")
-# print("Available ports : 8502  8503  8504")
-# print(">>> INPUT IS PORT NUMBER, NOT TOTP <<<")
-
-# while True:
-#     port = input("Enter PORT No for dashboard [8502 / 8503 / 8504]: ").strip()
-#     if port in ["8502", "8503", "8504"]:
-#         break
-#     print("❌ Invalid port. Enter only 8502 or 8503 or 8504.")
-
-# dashboard_process = subprocess.Popen([
-#     "streamlit",
-#     "run",
-#     "dashboard2.py",
-#     "--server.port",
-#     port,
-#     "--server.address",
-#     "0.0.0.0"
-# ])
-
-# print(f"✅ STEP 7 COMPLETED : Dashboard started on port {port}")
+print("STEP 4 COMPLETED: main.py started.")
 
 print("\n" + "=" * 55)
 print("        SYSTEM READY FOR DASH BOARD OPENING")
