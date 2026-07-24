@@ -663,7 +663,7 @@ while True:
     # ---------- CHART HISTORY ----------
     from datetime import datetime
 
-    history_file = f"summary_history_{datetime.now(IST).strftime('%Y%m%d')}.csv"
+    history_file = "chart_history.csv"
 
     total_ce_oi = option_chain["CE OI"].sum()
     total_pe_oi = option_chain["PE OI"].sum()

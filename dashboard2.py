@@ -168,10 +168,8 @@ def refresh_dashboard():
 
     full_df = full_df[full_df["Expiry"] == selected_expiry].copy()
 
-    today = datetime.now(IST).strftime("%Y%m%d")
-
     try:
-        hist_df = pd.read_csv(f"summary_history_{today}.csv")
+        hist_df = pd.read_csv("chart_history.csv")
         hist_df.columns = hist_df.columns.str.strip()
     except Exception:
         hist_df = pd.DataFrame()
@@ -417,7 +415,8 @@ def refresh_dashboard():
                 "displaylogo": False,
                 "scrollZoom": True,
                 "responsive": True
-            }
+            },
+            theme=None
         )
     except Exception as e:
         st.warning(f"Charts not ready: {e}")
