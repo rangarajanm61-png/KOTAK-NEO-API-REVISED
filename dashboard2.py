@@ -4,6 +4,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import numpy as np
+import os, time
 import plotly.express as px
 # import time
 # from option_chain import calculate_pcr, expiry_summary
@@ -59,9 +60,8 @@ div[data-testid="stMetric"] {
 def refresh_dashboard():
     
     try:
-        oc = pd.read_csv("option_chain.csv")
-        import os, time
-        
+        option_df = pd.read_csv("option_chain.csv")
+            
         # ---------- SAFE COLUMN BLOCK : avoid KeyError ----------
 
         required_cols = [
@@ -168,11 +168,14 @@ def refresh_dashboard():
 
     full_df = full_df[full_df["Expiry"] == selected_expiry].copy()
 
+    today = datetime.now(IST).strftime("%Y%m%d")
+
     try:
-        hist_df = pd.read_csv("chart_history.csv")
-        
-    except:
+        hist_df = pd.read_csv(f"summary_history_{today}.csv")
+        hist_df.columns = hist_df.columns.str.strip()
+    except Exception:
         hist_df = pd.DataFrame()
+
     try:
         summary_csv_df = pd.read_csv("summary.csv")
         summary_csv_df.columns = summary_csv_df.columns.str.strip()
@@ -203,9 +206,7 @@ def refresh_dashboard():
         "OI PCR": f"{oi_pcr:.2f}",
         "PCR Δ": f"{overall_oi_pcr_change:.2f}",
         "Vol PCR": f"{vol_pcr:.2f}",
-        "Max Pain": int(hist_df["Max Pain"].iloc[-1])
-            if not hist_df.empty and "Max Pain" in hist_df.columns else 0,
-
+        "Max Pain": max_pain,
         "Expiry": selected_expiry,
         "Data Time": summary_data_time,
         "Dashboard Time": datetime.now(IST).strftime("%H:%M:%S")
@@ -328,7 +329,7 @@ def refresh_dashboard():
         combo_cols = ["Spot", "Max Pain", "OI PCR", "Vol PCR", "OI PCR Change"]
 
         combo_df = hist_df[["Time"] + combo_cols].copy()
-        combo_df = combo_df.tail(60)
+        # combo_df = combo_df.tail(60)
 
         for c in combo_cols:
             combo_df[c] = pd.to_numeric(combo_df[c], errors="coerce").fillna(0)
@@ -382,17 +383,21 @@ def refresh_dashboard():
 
         fig.update_layout(
             height=500,
+            dragmode="pan",
+            uirevision="nifty-live-chart",
+            transition_duration=0,
             xaxis=dict(title="Time"),
             yaxis=dict(
                 title="NIFTY Spot",
-                side="left"
+                side="left",
+                range=[23500, 23850],      
             ),
             # 
             yaxis2=dict(
             title="PCR",
             overlaying="y",
             side="right",
-            range=[-0.2, 2.0]
+            range=[-0.2, 3.0]
             ),
             legend=dict(
                 orientation="h",
@@ -403,8 +408,17 @@ def refresh_dashboard():
             )
         )
 
-        st.plotly_chart(fig, width="stretch")
-        
+        st.plotly_chart(
+            fig,
+            width="stretch",
+            key="live_combined_chart",
+            config={
+                "displayModeBar": True,
+                "displaylogo": False,
+                "scrollZoom": True,
+                "responsive": True
+            }
+        )
     except Exception as e:
         st.warning(f"Charts not ready: {e}")
     
